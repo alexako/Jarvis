@@ -39,11 +39,25 @@ class JarvisAssistant:
         """Handle speech input"""
         logger.info(f"📝 Speech received: '{text}'")
         
-        if self.is_active or "jarvis" in text.lower():
+        # Check if this is just the wake word (avoid double processing)
+        text_lower = text.lower().strip()
+        wake_words = ["jarvis", "hey jarvis"]
+        is_pure_wake_word = any(text_lower == wake_word for wake_word in wake_words)
+        
+        if is_pure_wake_word and self.is_active:
+            # Already activated by wake word callback, skip processing
+            logger.info("Pure wake word detected - already processed by wake word callback")
+            return
+        
+        if self.is_active or "jarvis" in text_lower:
             # Activate if "jarvis" is mentioned but not already active
-            if "jarvis" in text.lower() and not self.is_active:
+            if "jarvis" in text_lower and not self.is_active:
                 self.is_active = True
-                self.tts.speak_direct("Yes, sir. How may I assist you?")
+                logger.info("Activated via speech text - ready for commands")
+                # Don't greet again if this is just a wake word
+                if not is_pure_wake_word:
+                    self.tts.speak_direct("Yes, sir. How may I assist you?")
+                return
             
             # Process the command using centralized system
             self.commands.process_command(text)

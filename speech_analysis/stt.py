@@ -22,8 +22,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config_manager import get_config
 
-# Configure logging
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -48,9 +46,10 @@ class AudioConfig:
         else:
             self.format: int = pyaudio.paInt16  # default fallback
             
-        self.silence_threshold: float = audio_config.get('silence_threshold', 100.0)
-        self.silence_duration: float = audio_config.get('silence_duration', 1.0)
-        self.max_recording_time: float = audio_config.get('max_recording_time', 6.0)
+        # FIXED: Much more reasonable thresholds
+        self.silence_threshold: float = max(150.0, audio_config.get('silence_threshold', 150.0))  # Increased from 30
+        self.silence_duration: float = max(2.5, audio_config.get('silence_duration', 2.5))  # Increased from 0.8
+        self.max_recording_time: float = max(20.0, audio_config.get('max_recording_time', 20.0))  # Increased from 6
         
         # Performance optimizations
         self.smart_silence_detection: bool = optimizations.get('smart_silence_detection', True)
@@ -58,89 +57,91 @@ class AudioConfig:
 
 
 class AudioBuffer:
-    """Circular buffer for audio data with voice activity detection"""
+    """FIXED: Circular buffer for audio data with proper voice activity detection"""
 
-    def __init__(self, max_size: int = 32000, debug: bool = False):  # ~2 seconds at 16kHz
+    def __init__(self, max_size: int = 320000, debug: bool = False):  # FIXED: 20 seconds at 16kHz instead of 2
         self.buffer = deque(maxlen=max_size)
         self.is_recording = False
         self.silence_counter = 0
         self.speech_detected = False
-        self.recent_rms = deque(maxlen=10)  # Track recent RMS values
+        self.recent_rms = deque(maxlen=50)  # FIXED: Track more samples for better adaptation
         self.background_rms = 0.0
-        self.recording_chunks = 0  # Track how long we've been recording
+        self.recording_chunks = 0
         self.debug = debug
+        self.speech_chunks = 0  # NEW: Track how much actual speech we've captured
         
     def add_chunk(self, chunk: np.ndarray, config: AudioConfig) -> bool:
-        """Add audio chunk and detect speech activity"""
+        """Add audio chunk and detect speech activity with better logic"""
         # Calculate RMS for voice activity detection
         if len(chunk) == 0:
             rms = 0.0
         else:
             mean_square = np.mean(chunk.astype(np.float64) ** 2)
-            # Handle edge cases: NaN, negative values, or very small values
             if np.isnan(mean_square) or mean_square < 0:
                 rms = 0.0
             else:
                 rms = np.sqrt(mean_square)
         
-        # Smart silence detection optimization - skip processing if obviously silent
-        if config.smart_silence_detection and not self.speech_detected and rms < 10.0:
-            return False  # Skip processing for very quiet chunks
-        
         # Track recent RMS values for adaptive thresholding
         self.recent_rms.append(rms)
         
-        # Update background noise estimate when not speaking
-        if not self.speech_detected and len(self.recent_rms) >= 5:
-            self.background_rms = np.mean(self.recent_rms)
+        # FIXED: Better background noise estimation
+        if not self.speech_detected and len(self.recent_rms) >= 10:
+            # Use median instead of mean for more robust background estimation
+            self.background_rms = np.median(list(self.recent_rms))
         
-        # Use more reasonable adaptive thresholds
+        # FIXED: More intelligent adaptive thresholds
         if self.background_rms > 0:
-            # Adaptive thresholds based on background noise - but keep silence threshold reasonable
-            speech_threshold = max(config.silence_threshold * 2.0, self.background_rms + 30.0)
-            silence_threshold = min(config.silence_threshold, self.background_rms + 10.0)
+            # Speech threshold should be significantly above background
+            speech_threshold = max(config.silence_threshold, self.background_rms * 4.0)
+            # Silence threshold should be closer to background but still above it
+            silence_threshold = max(config.silence_threshold * 0.3, self.background_rms * 1.5)
         else:
-            # Initial thresholds when background is not established
-            speech_threshold = config.silence_threshold * 3.0  # Higher threshold for speech
-            silence_threshold = config.silence_threshold * 0.5  # Lower threshold for silence
+            speech_threshold = config.silence_threshold * 2.0
+            silence_threshold = config.silence_threshold * 0.4
         
-        # Debug: Print RMS values occasionally to help tune threshold
+        # Debug logging
         if hasattr(self, '_debug_counter'):
             self._debug_counter += 1
         else:
             self._debug_counter = 0
         
-        # Get debug config for RMS logging interval
         debug_config = get_config().get_debug_config()
         rms_logging_interval = debug_config.get('rms_logging_interval', 500)
             
         if self.debug and self._debug_counter % rms_logging_interval == 0:
-            logger.info(f"RMS: {rms:.1f}, Speech Threshold: {speech_threshold:.1f}, Silence Threshold: {silence_threshold:.1f}, Background: {self.background_rms:.1f}, Speech: {self.speech_detected}")
+            logger.info(f"RMS: {rms:.1f}, Speech Threshold: {speech_threshold:.1f}, Silence Threshold: {silence_threshold:.1f}, Background: {self.background_rms:.1f}, Speech: {self.speech_detected}, Chunks: {self.speech_chunks}")
         
         # Speech detection: use higher threshold
         if not self.speech_detected and rms > speech_threshold:
-            if self.debug: logger.info(f"Speech detected - starting recording (RMS: {rms:.1f} > {speech_threshold:.1f})")
+            if self.debug: 
+                logger.info(f"🎤 Speech detected - starting recording (RMS: {rms:.1f} > {speech_threshold:.1f})")
             self.speech_detected = True
             self.is_recording = True
             self.silence_counter = 0
             self.recording_chunks = 0
-        # Silence detection: use lower threshold, but only if speech was detected
-        elif self.speech_detected and rms <= silence_threshold:
-            self.silence_counter += 1
-            # If silence for configured duration, stop recording
-            silence_threshold_chunks = config.silence_duration * config.sample_rate / config.chunk_size
+            self.speech_chunks = 0
             
-            # Debug: Show silence progress occasionally
-            if self.debug and self.silence_counter % 3 == 0:  # Every 3 chunks
-                logger.info(f"Silence counting: {self.silence_counter}/{silence_threshold_chunks:.1f} chunks (RMS: {rms:.1f} <= {silence_threshold:.1f})")
-            
-            if self.silence_counter > silence_threshold_chunks:
-                logger.info(f"✅ Silence detected - stopping recording (silence for {self.silence_counter} chunks, threshold: {silence_threshold_chunks:.1f})")
-                self.is_recording = False
-                return True  # Signal that we have a complete utterance
-        # Continue speech: reset silence counter if above silence threshold but below speech threshold
-        elif self.speech_detected and rms > silence_threshold:
-            self.silence_counter = 0
+        elif self.speech_detected:
+            if rms > silence_threshold:
+                # Still speech or above silence threshold
+                self.silence_counter = 0
+                if rms > speech_threshold:
+                    self.speech_chunks += 1  # Count chunks with strong speech
+            else:
+                # Below silence threshold
+                self.silence_counter += 1
+                
+                silence_threshold_chunks = config.silence_duration * config.sample_rate / config.chunk_size
+                
+                if self.debug and self.silence_counter % 5 == 0:
+                    logger.info(f"Silence counting: {self.silence_counter}/{silence_threshold_chunks:.1f} chunks (RMS: {rms:.1f} <= {silence_threshold:.1f})")
+                
+                # FIXED: Only stop if we've captured meaningful speech
+                if self.silence_counter > silence_threshold_chunks and self.speech_chunks > 5:
+                    logger.info(f"✅ Speech complete - {self.speech_chunks} speech chunks, {self.silence_counter} silence chunks")
+                    self.is_recording = False
+                    return True
         
         # Check for maximum recording time (prevent getting stuck)
         if self.is_recording:
@@ -148,9 +149,18 @@ class AudioBuffer:
             max_recording_chunks = config.max_recording_time * config.sample_rate / config.chunk_size
             
             if self.recording_chunks > max_recording_chunks:
-                logger.warning(f"Maximum recording time reached ({config.max_recording_time}s) - forcing utterance completion")
-                self.is_recording = False
-                return True  # Force utterance completion
+                # Only force completion if we have some speech
+                if self.speech_chunks > 3:
+                    logger.warning(f"Maximum recording time reached - completing with {self.speech_chunks} speech chunks")
+                    self.is_recording = False
+                    return True
+                else:
+                    # Reset if we haven't captured meaningful speech
+                    logger.warning("Maximum recording time reached with minimal speech - resetting")
+                    self.speech_detected = False
+                    self.is_recording = False
+                    self.buffer.clear()
+                    return False
             
             self.buffer.extend(chunk)
             
@@ -167,6 +177,7 @@ class AudioBuffer:
         self.is_recording = False
         self.silence_counter = 0
         self.recording_chunks = 0
+        self.speech_chunks = 0
         return data
 
 
@@ -177,7 +188,6 @@ class WhisperSTT:
         config = get_config()
         optimizations = config.get_optimizations_config()
         
-        # Get model name from performance mode or fallback
         if model_name is None:
             if performance_mode:
                 stt_config = config.get_stt_config(performance_mode)
@@ -191,7 +201,6 @@ class WhisperSTT:
         try:
             import whisper
             
-            # Load model with GPU acceleration if available and enabled
             if self.gpu_acceleration:
                 import torch
                 if torch.cuda.is_available():
@@ -225,10 +234,25 @@ class WhisperSTT:
             # Convert to float32 and normalize
             audio_float = audio_data.astype(np.float32) / 32768.0
             
-            # Whisper expects the audio to be properly formatted
-            result = self.model.transcribe(audio_float, language="en")
+            # FIXED: Better Whisper parameters for longer speech
+            result = self.model.transcribe(
+                audio_float, 
+                language="en",
+                temperature=0.0,  # More deterministic
+                compression_ratio_threshold=2.4,  # Less aggressive filtering
+                logprob_threshold=-1.0,  # Less aggressive filtering
+                no_speech_threshold=0.6,  # Slightly less strict
+                word_timestamps=True,  # Better for longer audio
+                verbose=False
+            )
             
-            return result.get("text", "").strip()
+            text = result.get("text", "").strip()
+            
+            # FIXED: Much less aggressive filtering
+            if len(text) > 1 and not text in [".", "..", "..."]:
+                return text
+            else:
+                return ""
             
         except Exception as e:
             logger.error(f"Whisper transcription failed: {e}")
@@ -361,7 +385,7 @@ class JarvisSTT:
         self.audio = pyaudio.PyAudio()
         self.stream = None
         
-        # Callback for when speech is detected
+        # Callbacks
         self.on_speech_callback: Optional[Callable[[str], None]] = None
         self.on_wake_word_callback: Optional[Callable[[], None]] = None
 
@@ -423,7 +447,6 @@ class JarvisSTT:
             logger.info(f"🎆 Utterance complete! is_processing: {self.is_processing}")
             if not self.is_processing:
                 if self.debug: logger.info("🚀 Starting transcription thread...")
-                # Process the complete utterance in a separate thread
                 threading.Thread(target=self._process_audio, daemon=True).start()
             else:
                 logger.warning("Cannot start transcription - already processing")

@@ -1,4 +1,57 @@
 {
+  "performance_modes": {
+    "fast": {
+      "audio": {
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_size": 2048,
+        "format": "paInt16",
+        "silence_threshold": 120.0,
+        "silence_duration": 0.8,
+        "max_recording_time": 4.0
+      },
+      "stt": {
+        "default_engine": "whisper",
+        "whisper": {
+          "default_model": "tiny.en"
+        }
+      }
+    },
+    "balanced": {
+      "audio": {
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_size": 1024,
+        "format": "paInt16",
+        "silence_threshold": 100.0,
+        "silence_duration": 1.0,
+        "max_recording_time": 6.0
+      },
+      "stt": {
+        "default_engine": "whisper",
+        "whisper": {
+          "default_model": "tiny.en"
+        }
+      }
+    },
+    "accurate": {
+      "audio": {
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_size": 512,
+        "format": "paInt16",
+        "silence_threshold": 80.0,
+        "silence_duration": 1.5,
+        "max_recording_time": 8.0
+      },
+      "stt": {
+        "default_engine": "whisper",
+        "whisper": {
+          "default_model": "base.en"
+        }
+      }
+    }
+  },
   "audio": {
     "sample_rate": 16000,
     "channels": 1,
@@ -24,5 +77,11 @@
   "debug": {
     "audio_processing": false,
     "rms_logging_interval": 500
+  },
+  "optimizations": {
+    "gpu_acceleration": true,
+    "smart_silence_detection": true,
+    "non_blocking_tts": true,
+    "audio_compression": false
   }
 }

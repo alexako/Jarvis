@@ -54,21 +54,7 @@ class JarvisCommands:
             "test voice": self.test_response,
             "test system": self.test_response,
             
-            # System control
-            "stop listening": self.stop_listening,
-            "sleep": self.stop_listening,
-            "pause": self.stop_listening,
-            "shutdown": self.shutdown,
-            "exit": self.shutdown,
-            "quit": self.shutdown,
-            "turn off": self.shutdown,
-            
-            # Farewells
-            "goodbye": self.goodbye,
-            "bye": self.goodbye,
-            "see you later": self.goodbye,
-            "farewell": self.goodbye,
-            "good night": self.goodbye,
+            # System control (deactivation commands moved to separate handling)
             
             # Information requests
             "who are you": self.introduce,
@@ -138,9 +124,31 @@ class JarvisCommands:
         """Process voice command and execute appropriate action"""
         text_lower = text.lower().strip()
         
-        # Check for command patterns
+        # Deactivation commands - require exact match or very specific phrasing
+        deactivation_commands = {
+            "stop listening": self.stop_listening,
+            "go to sleep": self.stop_listening, 
+            "shutdown": self.shutdown,
+            "shutdown jarvis": self.shutdown,
+            "goodbye": self.goodbye,
+            "goodbye jarvis": self.goodbye
+        }
+        
+        # Check deactivation commands first with exact match
+        for pattern, handler in deactivation_commands.items():
+            if text_lower == pattern or text_lower.endswith(pattern):
+                logger.info(f"🎯 Executing deactivation command: {pattern}")
+                try:
+                    handler(text)
+                    return True
+                except Exception as e:
+                    logger.error(f"Command execution failed: {e}")
+                    self.speak_error()
+                    return True
+        
+        # Check for other command patterns with substring match
         for pattern, handler in self.command_patterns.items():
-            if pattern in text_lower:
+            if pattern not in deactivation_commands and pattern in text_lower:
                 logger.info(f"🎯 Executing command: {pattern}")
                 try:
                     handler(text)
@@ -156,7 +164,10 @@ class JarvisCommands:
     
     def speak(self, text: str):
         """Convenience method to speak text"""
-        self.tts.speak_direct(text)
+        if self.assistant and hasattr(self.assistant, 'speak_without_feedback'):
+            self.assistant.speak_without_feedback(text)
+        else:
+            self.tts.speak_direct(text)
     
     def speak_random(self, response_list: List[str]):
         """Speak a random response from list"""

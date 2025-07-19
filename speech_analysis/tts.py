@@ -18,6 +18,11 @@ import numpy as np
 import pyaudio
 import queue
 import json
+import sys
+
+# Add parent directory to path to import config_manager
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config_manager import get_config
 
 # Configure logging
 
@@ -357,8 +362,16 @@ class JarvisTTS:
         # Callbacks
         self.on_speech_start_callback: Optional[Callable[[], None]] = None
         self.on_speech_end_callback: Optional[Callable[[], None]] = None
+        
+        # Non-blocking TTS support
+        config = get_config()
+        optimizations = config.get_optimizations_config()
+        self.non_blocking_tts = optimizations.get('non_blocking_tts', False)
+        self.speech_queue = queue.Queue()
+        self.speech_thread = None
+        self.is_speech_thread_running = False
 
-        logger.info(f"Jarvis TTS initialized with {tts_engine} engine")
+        logger.info(f"Jarvis TTS initialized with {tts_engine} engine, non-blocking: {self.non_blocking_tts}")
 
     def set_speech_callbacks(self, 
                            on_start: Optional[Callable[[], None]] = None,
@@ -367,8 +380,43 @@ class JarvisTTS:
         self.on_speech_start_callback = on_start
         self.on_speech_end_callback = on_end
 
+    def _speech_worker(self):
+        """Worker thread for non-blocking speech processing"""
+        self.is_speech_thread_running = True
+        while self.is_speech_thread_running:
+            try:
+                speech_item = self.speech_queue.get(timeout=1.0)
+                if speech_item is None:  # Shutdown signal
+                    break
+                
+                text, context, use_personality = speech_item
+                self._speak_blocking(text, context, use_personality)
+                self.speech_queue.task_done()
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"Speech worker error: {e}")
+
     def speak(self, text: str, context: str = "general", use_personality: bool = True):
         """Speak text with Jarvis personality"""
+        if not text:
+            return
+        
+        if self.non_blocking_tts:
+            # Queue speech for non-blocking processing
+            self.speech_queue.put((text, context, use_personality))
+            
+            # Start worker thread if not running
+            if not self.speech_thread or not self.speech_thread.is_alive():
+                self.speech_thread = threading.Thread(target=self._speech_worker, daemon=True)
+                self.speech_thread.start()
+        else:
+            # Process speech immediately (blocking)
+            self._speak_blocking(text, context, use_personality)
+
+    def _speak_blocking(self, text: str, context: str = "general", use_personality: bool = True):
+        """Internal blocking speech implementation"""
         if not text:
             return
 
@@ -446,6 +494,11 @@ class JarvisTTS:
     def stop_speaking(self):
         """Stop current speech"""
         self.player.stop_playback()
+        
+        # Stop non-blocking speech thread if running
+        if self.non_blocking_tts and self.is_speech_thread_running:
+            self.is_speech_thread_running = False
+            self.speech_queue.put(None)  # Send shutdown signal
 
     def set_jarvis_voice(self, voice_sample_path: str):
         """Set Jarvis voice sample for cloning"""

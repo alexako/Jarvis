@@ -32,9 +32,10 @@ logger = logging.getLogger(__name__)
 class AudioConfig:
     """Audio configuration settings"""
 
-    def __init__(self):
+    def __init__(self, performance_mode: str = None):
         config = get_config()
-        audio_config = config.get_audio_config()
+        audio_config = config.get_audio_config(performance_mode)
+        optimizations = config.get_optimizations_config()
         
         self.sample_rate: int = audio_config.get('sample_rate', 16000)
         self.channels: int = audio_config.get('channels', 1)
@@ -47,9 +48,13 @@ class AudioConfig:
         else:
             self.format: int = pyaudio.paInt16  # default fallback
             
-        self.silence_threshold: float = audio_config.get('silence_threshold', 50.0)
-        self.silence_duration: float = audio_config.get('silence_duration', 0.3)
-        self.max_recording_time: float = audio_config.get('max_recording_time', 10.0)
+        self.silence_threshold: float = audio_config.get('silence_threshold', 100.0)
+        self.silence_duration: float = audio_config.get('silence_duration', 1.0)
+        self.max_recording_time: float = audio_config.get('max_recording_time', 6.0)
+        
+        # Performance optimizations
+        self.smart_silence_detection: bool = optimizations.get('smart_silence_detection', True)
+        self.audio_compression: bool = optimizations.get('audio_compression', False)
 
 
 class AudioBuffer:
@@ -77,6 +82,10 @@ class AudioBuffer:
                 rms = 0.0
             else:
                 rms = np.sqrt(mean_square)
+        
+        # Smart silence detection optimization - skip processing if obviously silent
+        if config.smart_silence_detection and not self.speech_detected and rms < 10.0:
+            return False  # Skip processing for very quiet chunks
         
         # Track recent RMS values for adaptive thresholding
         self.recent_rms.append(rms)
@@ -164,16 +173,39 @@ class AudioBuffer:
 class WhisperSTT:
     """Whisper-based STT implementation - The heavyweight championÃ¢"""
 
-    def __init__(self, model_name: str = None):
+    def __init__(self, model_name: str = None, performance_mode: str = None):
+        config = get_config()
+        optimizations = config.get_optimizations_config()
+        
+        # Get model name from performance mode or fallback
         if model_name is None:
-            config = get_config()
-            model_name = config.get('stt.whisper.default_model', 'tiny.en')
+            if performance_mode:
+                stt_config = config.get_stt_config(performance_mode)
+                model_name = stt_config.get('whisper', {}).get('default_model', 'tiny.en')
+            else:
+                model_name = config.get('stt.whisper.default_model', 'tiny.en')
+        
+        self.gpu_acceleration = optimizations.get('gpu_acceleration', False)
+        self.model_name = model_name
             
         try:
             import whisper
-            self.model = whisper.load_model(model_name)
+            
+            # Load model with GPU acceleration if available and enabled
+            if self.gpu_acceleration:
+                import torch
+                if torch.cuda.is_available():
+                    self.model = whisper.load_model(model_name, device="cuda")
+                    logger.info(f"Whisper model '{model_name}' loaded with GPU acceleration")
+                else:
+                    logger.warning("GPU acceleration requested but CUDA not available, falling back to CPU")
+                    self.model = whisper.load_model(model_name)
+                    logger.info(f"Whisper model '{model_name}' loaded on CPU")
+            else:
+                self.model = whisper.load_model(model_name)
+                logger.info(f"Whisper model '{model_name}' loaded on CPU")
+            
             self.available = True
-            logger.info(f"Whisper model '{model_name}' loaded successfully")
         except ImportError:
             logger.error("Whisper not installed. Run: pip install openai-whisper")
             self.available = False
@@ -293,31 +325,37 @@ class JarvisSTT:
                  stt_engine: str = None,
                  model_name: str = None,
                  wake_words: list = None,
-                 debug: bool = None):
+                 debug: bool = None,
+                 performance_mode: str = None):
         
         # Load config values if not provided
         config = get_config()
         if stt_engine is None:
-            stt_engine = config.get('stt.default_engine', 'whisper')
+            if performance_mode:
+                stt_config = config.get_stt_config(performance_mode)
+                stt_engine = stt_config.get('default_engine', 'whisper')
+            else:
+                stt_engine = config.get('stt.default_engine', 'whisper')
         if debug is None:
             debug = config.get('debug.audio_processing', False)
         
-        self.config = AudioConfig()
+        self.performance_mode = performance_mode
+        self.config = AudioConfig(performance_mode)
         self.audio_buffer = AudioBuffer(debug=debug)
         self.wake_detector = WakeWordDetector(wake_words)
         self.is_listening = False
         self.is_processing = False
         self.debug = debug
         
-        # Initialize STT engine
+        # Initialize STT engine with performance mode
         if stt_engine.lower() == "whisper":
-            self.stt_engine = WhisperSTT(model_name)
+            self.stt_engine = WhisperSTT(model_name, performance_mode)
         elif stt_engine.lower() == "vosk":
             self.stt_engine = VoskSTT(model_name)
         else:
             raise ValueError(f"Unknown STT engine: {stt_engine}")
 
-        logger.info("STT Engine loaded")
+        logger.info(f"STT Engine loaded with performance mode: {performance_mode or 'default'}")
         
         # Initialize PyAudio
         self.audio = pyaudio.PyAudio()

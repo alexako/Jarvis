@@ -63,13 +63,25 @@ class ConfigManager:
         except (KeyError, TypeError):
             return default
     
-    def get_audio_config(self) -> Dict[str, Any]:
-        """Get audio configuration section"""
+    def get_audio_config(self, performance_mode: str = None) -> Dict[str, Any]:
+        """Get audio configuration section with optional performance mode"""
+        if performance_mode and performance_mode in ['fast', 'balanced', 'accurate']:
+            mode_config = self.get(f'performance_modes.{performance_mode}.audio', {})
+            if mode_config:
+                return mode_config
         return self.get('audio', {})
     
-    def get_stt_config(self) -> Dict[str, Any]:
-        """Get STT configuration section"""
+    def get_stt_config(self, performance_mode: str = None) -> Dict[str, Any]:
+        """Get STT configuration section with optional performance mode"""
+        if performance_mode and performance_mode in ['fast', 'balanced', 'accurate']:
+            mode_config = self.get(f'performance_modes.{performance_mode}.stt', {})
+            if mode_config:
+                return mode_config
         return self.get('stt', {})
+    
+    def get_optimizations_config(self) -> Dict[str, Any]:
+        """Get optimizations configuration section"""
+        return self.get('optimizations', {})
     
     def get_wake_words(self) -> list:
         """Get wake words list"""

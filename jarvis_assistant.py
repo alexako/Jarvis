@@ -44,8 +44,9 @@ class JarvisAssistant:
         
         # Filter out empty, very short, or meaningless transcriptions
         text_clean = text.strip()
-        if not text_clean or len(text_clean) < 3 or text_clean in [".", "..", "...", ". .", ". . .", "service.", "I don't know what to do."]:
-            logger.info(f"Ignoring meaningless transcription: '{text_clean}'")
+
+        if not text_clean or len(text_clean) < 2 or text_clean in [".", "..", "..."]:
+            logger.info(f"Ignoring very short transcription: '{text_clean}'")
             return
         
         text_lower = text_clean.lower()

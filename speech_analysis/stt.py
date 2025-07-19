@@ -96,9 +96,9 @@ class AudioBuffer:
         
         # Use more reasonable adaptive thresholds
         if self.background_rms > 0:
-            # Adaptive thresholds based on background noise
-            speech_threshold = max(config.silence_threshold, self.background_rms + 20.0)
-            silence_threshold = self.background_rms + 5.0
+            # Adaptive thresholds based on background noise - but keep silence threshold reasonable
+            speech_threshold = max(config.silence_threshold * 2.0, self.background_rms + 30.0)
+            silence_threshold = min(config.silence_threshold, self.background_rms + 10.0)
         else:
             # Initial thresholds when background is not established
             speech_threshold = config.silence_threshold * 3.0  # Higher threshold for speech
@@ -499,20 +499,15 @@ class JarvisSTT:
                 # Read audio chunk
                 try:
                     data = stream.read(self.config.chunk_size, exception_on_overflow=False)
-                    print(f"Read {len(data)} bytes of audio data")
                     audio_chunk = np.frombuffer(data, dtype=np.int16)
-                    print(f"Audio chunk length: {len(audio_chunk)}")
                     
                     # Add to buffer and check for complete utterance
                     utterance_complete = temp_buffer.add_chunk(audio_chunk, self.config)
-                    print(f"utterance_complete: {utterance_complete}")
                     
                     if utterance_complete:
                         logger.info("Complete utterance detected, transcribing...")
                         # Get the audio data
                         audio_data = temp_buffer.get_audio_data()
-                        
-                        print(f"Audio data length: {len(audio_data)}")
                         
                         if len(audio_data) > 0:
                             # Transcribe the audio

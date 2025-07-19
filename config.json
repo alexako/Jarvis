@@ -57,9 +57,9 @@
     "channels": 1,
     "chunk_size": 1024,
     "format": "paInt16",
-    "silence_threshold": 100.0,
-    "silence_duration": 1.0,
-    "max_recording_time": 6.0
+    "silence_threshold": 30.0,
+    "silence_duration": 0.8,
+    "max_recording_time": 4.0
   },
   "stt": {
     "default_engine": "whisper",

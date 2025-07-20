@@ -480,21 +480,51 @@ class JarvisTTS:
         else:
             self.speak(text, use_personality=False)
     
+    def _calculate_speech_timeout(self, text: str) -> float:
+        """Calculate appropriate timeout based on text length and speech rate"""
+        # Get configuration values
+        config = get_config()
+        tts_config = config.get('tts', {})
+        
+        speech_rate = tts_config.get('speech_rate_wpm', 150)  # words per minute
+        buffer_factor = tts_config.get('timeout_buffer_factor', 0.5)
+        min_timeout = tts_config.get('min_timeout_seconds', 30)
+        max_timeout = tts_config.get('max_timeout_seconds', 300)
+        
+        # Estimate speaking time
+        word_count = len(text.split())
+        estimated_time = (word_count / speech_rate) * 60  # Convert to seconds
+        
+        # Add buffer time for processing and pauses
+        buffer_time = max(10, estimated_time * buffer_factor)  # At least 10 seconds buffer
+        
+        # Set timeout with configured minimum and maximum
+        timeout = max(min_timeout, estimated_time + buffer_time)
+        timeout = min(max_timeout, timeout)
+        
+        return timeout
+
     def _fallback_system_say(self, text: str):
-        """Fallback to macOS say command"""
+        """Fallback to macOS say command with dynamic timeout"""
         try:
             import subprocess
             import platform
             
             if platform.system() == "Darwin":  # macOS
-                # Use macOS say command with Daniel voice and timeout
-                subprocess.run(["say", "-v", "Daniel", text], check=True, timeout=10)
-                logger.info(f"System say: '{text}'")
+                # Calculate appropriate timeout based on text length
+                timeout = self._calculate_speech_timeout(text)
+                
+                logger.info(f"Speaking text ({len(text.split())} words, {timeout:.1f}s timeout): '{text[:100]}{'...' if len(text) > 100 else ''}'")
+                
+                # Use macOS say command with dynamic timeout
+                subprocess.run(["say", "-v", "Daniel", text], check=True, timeout=timeout)
+                logger.info(f"System say completed successfully")
             else:
                 logger.error("System say fallback not available on this platform")
                 
         except subprocess.TimeoutExpired:
-            logger.error(f"System say timed out after 10 seconds for text: '{text}'")
+            word_count = len(text.split())
+            logger.error(f"System say timed out after {timeout:.1f}s for {word_count} words. Text may be too long or system is overloaded.")
         except Exception as e:
             logger.error(f"System say failed: {e}")
 

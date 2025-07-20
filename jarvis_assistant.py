@@ -5,7 +5,7 @@ import datetime
 import threading
 import logging
 from speech_analysis import JarvisSTT, JarvisTTS
-from commands import JarvisCommands
+from commands import JarvisCommands, create_ai_config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -13,15 +13,24 @@ logger = logging.getLogger(__name__)
 
 class JarvisAssistant:
     """Complete Jarvis Voice Assistant with STT and TTS"""
-    
-    def __init__(self, prevent_feedback=False, performance_mode=None):
+
+    def __init__(self, ai_enabled=False, prevent_feedback=False, performance_mode=None, ai_provider_preference="anthropic"):
         self.performance_mode = performance_mode
         self.stt = JarvisSTT(stt_engine="whisper", model_name="base", performance_mode=performance_mode)
         self.tts = JarvisTTS(tts_engine="system")
         self.is_active = False
         self.is_listening = False
+        self.ai_enabled = ai_enabled
         self.prevent_feedback = prevent_feedback
         self.is_speaking = False  # Track when TTS is active
+        
+        # Create AI configuration
+        prefer_anthropic = (ai_provider_preference == "anthropic")
+        ai_config = create_ai_config(
+            anthropic_enabled=self.ai_enabled,     # Use Claude
+            deepseek_enabled=self.ai_enabled,      # Use DeepSeek  
+            prefer_anthropic=prefer_anthropic      # Use specified preference
+        )
         
         # Initialize centralized command system
         self.commands = JarvisCommands(self.tts, self)
@@ -44,8 +53,9 @@ class JarvisAssistant:
         
         # Filter out empty, very short, or meaningless transcriptions
         text_clean = text.strip()
-        if not text_clean or len(text_clean) < 3 or text_clean in [".", "..", "...", ". .", ". . .", "service.", "I don't know what to do."]:
-            logger.info(f"Ignoring meaningless transcription: '{text_clean}'")
+
+        if not text_clean or len(text_clean) < 2 or text_clean in [".", "..", "..."]:
+            logger.info(f"Ignoring very short transcription: '{text_clean}'")
             return
         
         text_lower = text_clean.lower()
@@ -147,6 +157,12 @@ def main():
                        help='Use balanced performance mode (default settings)')
     parser.add_argument('--accurate', action='store_true', 
                        help='Use accurate performance mode (larger models, better quality)')
+    parser.add_argument('--enable-ai', action='store_true', 
+                       help='Enable AI features (Claude and DeepSeek) for advanced interactions')
+    parser.add_argument('--use-anthropic', action='store_true',
+                       help='Use Anthropic Claude as primary AI provider (default)')
+    parser.add_argument('--use-deepseek', action='store_true',
+                       help='Use DeepSeek as primary AI provider')
     
     args = parser.parse_args()
     
@@ -164,14 +180,32 @@ def main():
     elif args.accurate:
         performance_mode = "accurate"
     
+    # Determine AI provider preference
+    ai_provider_preference = "anthropic"  # default
+    provider_count = sum([args.use_anthropic, args.use_deepseek])
+    
+    if provider_count > 1:
+        print("Error: Only one AI provider can be specified as primary")
+        sys.exit(1)
+    elif args.use_deepseek:
+        ai_provider_preference = "deepseek"
+    elif args.use_anthropic:
+        ai_provider_preference = "anthropic"
+
     # Display settings
     if args.prevent_feedback:
         print("🔇 Feedback prevention enabled")
     if performance_mode:
         print(f"⚡ Performance mode: {performance_mode}")
+    if args.enable_ai:
+        primary_provider = "Claude" if ai_provider_preference == "anthropic" else "DeepSeek"
+        fallback_provider = "DeepSeek" if ai_provider_preference == "anthropic" else "Claude"
+        print(f"🤖 AI features enabled - Primary: {primary_provider}, Fallback: {fallback_provider}")
     
     assistant = JarvisAssistant(prevent_feedback=args.prevent_feedback, 
-                               performance_mode=performance_mode)
+                                ai_enabled=args.enable_ai,
+                                performance_mode=performance_mode,
+                                ai_provider_preference=ai_provider_preference)
     assistant.start()
 
 if __name__ == "__main__":

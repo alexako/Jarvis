@@ -81,6 +81,10 @@ class JarvisCommands:
             'who are you': self._handle_identity,
             'introduce yourself': self._handle_identity,
             
+            # Entertainment
+            'joke': self._handle_joke,
+            'tell me a joke': self._handle_joke,
+            
             # Control commands
             'stop listening': self._handle_stop_listening,
             'shutdown': self._handle_shutdown,
@@ -171,10 +175,12 @@ class JarvisCommands:
     
     def _speak(self, text: str):
         """Speak text using assistant's feedback prevention if available"""
-        if self.assistant and hasattr(self.assistant, 'speak_without_feedback'):
-            self.assistant.speak_without_feedback(text)
+        if self.assistant and hasattr(self.assistant, 'speak_with_feedback_control'):
+            self.assistant.speak_with_feedback_control(text)
+        elif self.tts:
+            self.tts.speak_direct(text)
         else:
-            self._speak(text)
+            print(f"Jarvis: {text}")
     
     # Built-in command handlers (these run locally for speed)
     def _handle_greeting(self):
@@ -386,6 +392,23 @@ class JarvisCommands:
         response = random.choice(responses)
         self._speak(response)
         self.assistant.is_active = False
+    
+    def _handle_joke(self):
+        """Handle joke requests"""
+        jokes = [
+            "Why don't scientists trust atoms? Because they make up everything!",
+            "I told my wife she was drawing her eyebrows too high. She looked surprised.",
+            "Why don't programmers like nature? It has too many bugs.",
+            "What do you call a bear with no teeth? A gummy bear!",
+            "Why did the scarecrow win an award? He was outstanding in his field!",
+            "What's the best thing about Switzerland? I don't know, but the flag is a big plus.",
+            "Why do programmers prefer dark mode? Because light attracts bugs!",
+            "What did the ocean say to the beach? Nothing, it just waved.",
+            "Why don't eggs tell jokes? They'd crack each other up!",
+            "What do you call a fake noodle? An impasta!"
+        ]
+        joke = random.choice(jokes)
+        self._speak(f"Here's a joke for you, sir: {joke}")
     
     def _handle_test(self):
         """Handle test command"""

@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-Jarvis STT Pipeline - Because your assistant needs to actually hear you, duh.
+Enhanced Jarvis STT Pipeline - Unified with all improvements
 This is the foundation for speech-to-text processing with both Whisper and Vosk options.
+Key features:
+1. Better audio stream state management
+2. Non-blocking speech processing
+3. Proper buffer reset mechanisms
+4. Enhanced feedback prevention
+5. Audio stream recovery logic
 """
 
 import threading
@@ -17,6 +23,7 @@ from collections import deque
 import logging
 import sys
 import os
+import queue
 
 # Add parent directory to path to import config_manager
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -46,10 +53,10 @@ class AudioConfig:
         else:
             self.format: int = pyaudio.paInt16  # default fallback
             
-        # FIXED: Much more reasonable thresholds
-        self.silence_threshold: float = max(150.0, audio_config.get('silence_threshold', 150.0))  # Increased from 30
-        self.silence_duration: float = max(2.5, audio_config.get('silence_duration', 2.5))  # Increased from 0.8
-        self.max_recording_time: float = max(20.0, audio_config.get('max_recording_time', 20.0))  # Increased from 6
+        # Enhanced thresholds for better responsiveness
+        self.silence_threshold: float = max(150.0, audio_config.get('silence_threshold', 150.0))
+        self.silence_duration: float = max(1.5, audio_config.get('silence_duration', 1.5))  # Reduced from 2.5
+        self.max_recording_time: float = max(15.0, audio_config.get('max_recording_time', 15.0))  # Reduced from 20
         
         # Performance optimizations
         self.smart_silence_detection: bool = optimizations.get('smart_silence_detection', True)
@@ -57,21 +64,58 @@ class AudioConfig:
 
 
 class AudioBuffer:
-    """FIXED: Circular buffer for audio data with proper voice activity detection"""
+    """Enhanced audio buffer with better state management and responsiveness"""
 
-    def __init__(self, max_size: int = 320000, debug: bool = False):  # FIXED: 20 seconds at 16kHz instead of 2
+    def __init__(self, max_size: int = 240000, debug: bool = False):  # 15 seconds at 16kHz
         self.buffer = deque(maxlen=max_size)
         self.is_recording = False
         self.silence_counter = 0
         self.speech_detected = False
-        self.recent_rms = deque(maxlen=50)  # FIXED: Track more samples for better adaptation
+        self.recent_rms = deque(maxlen=30)  # Reduced for faster adaptation
         self.background_rms = 0.0
         self.recording_chunks = 0
         self.debug = debug
-        self.speech_chunks = 0  # NEW: Track how much actual speech we've captured
+        self.speech_chunks = 0
+        self.last_reset_time = time.time()
+        self.min_speech_chunks = 3  # Minimum speech chunks before considering valid
+        self.adaptive_silence_threshold = 150.0
         
+        # Enhanced state tracking
+        self.consecutive_silence = 0
+        self.speech_energy_history = deque(maxlen=10)
+        self.is_paused = False  # For feedback prevention
+        
+    def pause_detection(self):
+        """Pause speech detection (during TTS playback)"""
+        self.is_paused = True
+        logger.debug("Audio detection paused")
+        
+    def resume_detection(self):
+        """Resume speech detection after TTS"""
+        self.is_paused = False
+        self.reset_state()
+        logger.debug("Audio detection resumed")
+        
+    def reset_state(self):
+        """Reset buffer state for fresh detection"""
+        self.buffer.clear()
+        self.speech_detected = False
+        self.is_recording = False
+        self.silence_counter = 0
+        self.recording_chunks = 0
+        self.speech_chunks = 0
+        self.consecutive_silence = 0
+        self.speech_energy_history.clear()
+        self.last_reset_time = time.time()
+        
+        if self.debug:
+            logger.debug("Audio buffer state reset")
+    
     def add_chunk(self, chunk: np.ndarray, config: AudioConfig) -> bool:
-        """Add audio chunk and detect speech activity with better logic"""
+        """Enhanced chunk processing with better responsiveness"""
+        if self.is_paused:
+            return False
+            
         # Calculate RMS for voice activity detection
         if len(chunk) == 0:
             rms = 0.0
@@ -84,84 +128,90 @@ class AudioBuffer:
         
         # Track recent RMS values for adaptive thresholding
         self.recent_rms.append(rms)
+        self.speech_energy_history.append(rms)
         
-        # FIXED: Better background noise estimation
-        if not self.speech_detected and len(self.recent_rms) >= 10:
-            # Use median instead of mean for more robust background estimation
-            self.background_rms = np.median(list(self.recent_rms))
+        # Enhanced background noise estimation
+        if not self.speech_detected and len(self.recent_rms) >= 5:  # Faster adaptation
+            # Use 75th percentile for more robust background estimation
+            sorted_rms = sorted(list(self.recent_rms))
+            self.background_rms = sorted_rms[int(len(sorted_rms) * 0.75)]
         
-        # FIXED: More intelligent adaptive thresholds
+        # Dynamic threshold calculation
         if self.background_rms > 0:
-            # Speech threshold should be significantly above background
-            speech_threshold = max(config.silence_threshold, self.background_rms * 4.0)
-            # Silence threshold should be closer to background but still above it
-            silence_threshold = max(config.silence_threshold * 0.3, self.background_rms * 1.5)
+            # More aggressive speech detection for better responsiveness
+            speech_threshold = max(config.silence_threshold, self.background_rms * 3.0)  # Reduced from 4.0
+            silence_threshold = max(config.silence_threshold * 0.4, self.background_rms * 1.8)  # Slightly higher
         else:
-            speech_threshold = config.silence_threshold * 2.0
-            silence_threshold = config.silence_threshold * 0.4
+            speech_threshold = config.silence_threshold * 1.5  # Reduced multiplier
+            silence_threshold = config.silence_threshold * 0.5
         
-        # Debug logging
-        if hasattr(self, '_debug_counter'):
-            self._debug_counter += 1
+        # Update adaptive silence threshold for quick adaptation
+        if rms > speech_threshold:
+            self.adaptive_silence_threshold = max(self.adaptive_silence_threshold * 0.95, silence_threshold)
         else:
-            self._debug_counter = 0
+            self.adaptive_silence_threshold = min(self.adaptive_silence_threshold * 1.02, speech_threshold * 0.8)
         
-        debug_config = get_config().get_debug_config()
-        rms_logging_interval = debug_config.get('rms_logging_interval', 500)
-            
-        if self.debug and self._debug_counter % rms_logging_interval == 0:
-            logger.info(f"RMS: {rms:.1f}, Speech Threshold: {speech_threshold:.1f}, Silence Threshold: {silence_threshold:.1f}, Background: {self.background_rms:.1f}, Speech: {self.speech_detected}, Chunks: {self.speech_chunks}")
-        
-        # Speech detection: use higher threshold
+        # Enhanced speech detection logic
         if not self.speech_detected and rms > speech_threshold:
-            if self.debug: 
-                logger.info(f"🎤 Speech detected - starting recording (RMS: {rms:.1f} > {speech_threshold:.1f})")
-            self.speech_detected = True
-            self.is_recording = True
-            self.silence_counter = 0
-            self.recording_chunks = 0
-            self.speech_chunks = 0
+            # Additional validation: check if this isn't just a noise spike
+            recent_energy = list(self.speech_energy_history)[-3:] if len(self.speech_energy_history) >= 3 else [rms]
+            avg_recent_energy = np.mean(recent_energy)
             
-        elif self.speech_detected:
-            if rms > silence_threshold:
-                # Still speech or above silence threshold
+            if avg_recent_energy > speech_threshold * 0.7:  # More lenient validation
+                if self.debug: 
+                    logger.info(f"🎤 Speech detected - starting recording (RMS: {rms:.1f} > {speech_threshold:.1f})")
+                self.speech_detected = True
+                self.is_recording = True
                 self.silence_counter = 0
-                if rms > speech_threshold:
-                    self.speech_chunks += 1  # Count chunks with strong speech
+                self.consecutive_silence = 0
+                self.recording_chunks = 0
+                self.speech_chunks = 0
+                
+        elif self.speech_detected:
+            if rms > self.adaptive_silence_threshold:
+                # Still speech or above adaptive threshold
+                self.silence_counter = 0
+                self.consecutive_silence = 0
+                if rms > speech_threshold * 0.8:  # Count as strong speech
+                    self.speech_chunks += 1
             else:
                 # Below silence threshold
                 self.silence_counter += 1
+                self.consecutive_silence += 1
                 
+                # Enhanced completion criteria
                 silence_threshold_chunks = config.silence_duration * config.sample_rate / config.chunk_size
+                min_silence_chunks = max(5, silence_threshold_chunks * 0.6)  # Minimum silence needed
                 
-                if self.debug and self.silence_counter % 5 == 0:
-                    logger.info(f"Silence counting: {self.silence_counter}/{silence_threshold_chunks:.1f} chunks (RMS: {rms:.1f} <= {silence_threshold:.1f})")
+                if self.debug and self.silence_counter % 3 == 0:
+                    logger.debug(f"Silence: {self.silence_counter}/{silence_threshold_chunks:.1f}, Speech chunks: {self.speech_chunks}")
                 
-                # FIXED: Only stop if we've captured meaningful speech
-                if self.silence_counter > silence_threshold_chunks and self.speech_chunks > 5:
+                # Complete utterance if sufficient silence and speech
+                should_complete = (
+                    self.silence_counter > min_silence_chunks and 
+                    self.speech_chunks >= self.min_speech_chunks and
+                    self.consecutive_silence > 3  # Ensure sustained silence
+                )
+                
+                if should_complete:
                     logger.info(f"✅ Speech complete - {self.speech_chunks} speech chunks, {self.silence_counter} silence chunks")
-                    self.is_recording = False
                     return True
         
-        # Check for maximum recording time (prevent getting stuck)
+        # Enhanced timeout handling
         if self.is_recording:
             self.recording_chunks += 1
             max_recording_chunks = config.max_recording_time * config.sample_rate / config.chunk_size
             
             if self.recording_chunks > max_recording_chunks:
-                # Only force completion if we have some speech
-                if self.speech_chunks > 3:
+                if self.speech_chunks >= 2:  # More lenient minimum
                     logger.warning(f"Maximum recording time reached - completing with {self.speech_chunks} speech chunks")
-                    self.is_recording = False
                     return True
                 else:
-                    # Reset if we haven't captured meaningful speech
                     logger.warning("Maximum recording time reached with minimal speech - resetting")
-                    self.speech_detected = False
-                    self.is_recording = False
-                    self.buffer.clear()
+                    self.reset_state()
                     return False
             
+            # Only add to buffer if recording
             self.buffer.extend(chunk)
             
         return False
@@ -172,17 +222,15 @@ class AudioBuffer:
             return np.array([])
         
         data = np.array(list(self.buffer))
-        self.buffer.clear()
-        self.speech_detected = False
-        self.is_recording = False
-        self.silence_counter = 0
-        self.recording_chunks = 0
-        self.speech_chunks = 0
+        
+        # Reset state for next detection
+        self.reset_state()
+        
         return data
 
 
 class WhisperSTT:
-    """Whisper-based STT implementation - The heavyweight championÃ¢"""
+    """Enhanced Whisper-based STT implementation"""
 
     def __init__(self, model_name: str = None, performance_mode: str = None):
         config = get_config()
@@ -223,7 +271,7 @@ class WhisperSTT:
             self.available = False
 
     def transcribe(self, audio_data: np.ndarray, config: AudioConfig) -> str:
-        """Transcribe audio using Whisper"""
+        """Enhanced transcription with better filtering"""
         if not self.available:
             return "Whisper not available"
         
@@ -234,25 +282,29 @@ class WhisperSTT:
             # Convert to float32 and normalize
             audio_float = audio_data.astype(np.float32) / 32768.0
             
-            # FIXED: Better Whisper parameters for longer speech
+            # Enhanced Whisper parameters for better responsiveness
             result = self.model.transcribe(
                 audio_float, 
                 language="en",
-                temperature=0.0,  # More deterministic
-                compression_ratio_threshold=2.4,  # Less aggressive filtering
-                logprob_threshold=-1.0,  # Less aggressive filtering
-                no_speech_threshold=0.6,  # Slightly less strict
-                word_timestamps=True,  # Better for longer audio
-                verbose=False
+                temperature=0.0,
+                compression_ratio_threshold=2.4,
+                logprob_threshold=-1.0,
+                no_speech_threshold=0.6,
+                word_timestamps=False,  # Disable for faster processing
+                verbose=False,
+                fp16=False  # Disable FP16 for stability
             )
             
             text = result.get("text", "").strip()
             
-            # FIXED: Much less aggressive filtering
-            if len(text) > 1 and not text in [".", "..", "..."]:
-                return text
-            else:
-                return ""
+            # Enhanced filtering for better quality
+            if len(text) > 1 and not text in [".", "..", "...", "you", "thank you"]:
+                # Additional filter for common false positives
+                false_positives = ["mm-hmm", "hmm", "uh", "um", "ah", "oh"]
+                if text.lower() not in false_positives and len(text.split()) >= 1:
+                    return text
+            
+            return ""
             
         except Exception as e:
             logger.error(f"Whisper transcription failed: {e}")
@@ -260,7 +312,7 @@ class WhisperSTT:
 
 
 class VoskSTT:
-    """Vosk-based STT implementation - The lightweight speedsterÃ¢"""
+    """Vosk-based STT implementation - The lightweight speedster"""
 
     def __init__(self, model_path: str = None):
         if model_path is None:
@@ -310,7 +362,7 @@ class VoskSTT:
 
 
 class WakeWordDetector:
-    """Simple wake word detection - because we need to know when to listenÃ¢"""
+    """Enhanced wake word detection with better filtering"""
 
     def __init__(self, wake_words: list = None):
         if wake_words is None:
@@ -319,31 +371,43 @@ class WakeWordDetector:
             
         self.wake_words = [word.lower() for word in wake_words]
         self.last_detection = 0
-        self.cooldown = 2.0  # seconds
+        self.cooldown = 1.5  # Reduced cooldown for better responsiveness
 
     def detect(self, text: str) -> bool:
-        """Detect wake word in transcribed text"""
+        """Enhanced wake word detection"""
         if not text:
             return False
         
-        text_lower = text.lower()
+        text_lower = text.lower().strip()
         current_time = time.time()
         
         # Check cooldown to prevent spam
         if current_time - self.last_detection < self.cooldown:
             return False
         
+        # Enhanced wake word matching
         for wake_word in self.wake_words:
+            # Direct match
             if wake_word in text_lower:
                 self.last_detection = current_time
-                logger.info(f"Wake word detected: {wake_word}")
+                logger.info(f"Wake word detected: {wake_word} in '{text}'")
                 return True
+            
+            # Fuzzy matching for partial words
+            words = text_lower.split()
+            for word in words:
+                # Check if wake word is close to any word in the transcription
+                if wake_word in word or word in wake_word:
+                    if len(word) >= 3:  # Avoid matching very short words
+                        self.last_detection = current_time
+                        logger.info(f"Wake word detected (fuzzy): {wake_word} ~ {word}")
+                        return True
         
         return False
 
 
 class JarvisSTT:
-    """Main STT coordinator - The brains of the operationÃ¢"""
+    """Enhanced STT coordinator with improved responsiveness and all modern features"""
 
     def __init__(self, 
                  stt_engine: str = None,
@@ -371,6 +435,16 @@ class JarvisSTT:
         self.is_processing = False
         self.debug = debug
         
+        # Enhanced processing queue for non-blocking operation
+        self.processing_queue = queue.Queue(maxsize=3)  # Limit queue size
+        self.processing_thread = None
+        self.processing_thread_running = False
+        
+        # Audio stream state management
+        self.stream_lock = threading.RLock()
+        self.stream = None
+        self.audio = None
+        
         # Initialize STT engine with performance mode
         if stt_engine.lower() == "whisper":
             self.stt_engine = WhisperSTT(model_name, performance_mode)
@@ -379,11 +453,7 @@ class JarvisSTT:
         else:
             raise ValueError(f"Unknown STT engine: {stt_engine}")
 
-        logger.info(f"STT Engine loaded with performance mode: {performance_mode or 'default'}")
-        
-        # Initialize PyAudio
-        self.audio = pyaudio.PyAudio()
-        self.stream = None
+        logger.info(f"Enhanced STT Engine loaded with performance mode: {performance_mode or 'default'}")
         
         # Callbacks
         self.on_speech_callback: Optional[Callable[[str], None]] = None
@@ -398,116 +468,199 @@ class JarvisSTT:
         self.on_wake_word_callback = callback
 
     def start_listening(self):
-        """Start continuous listening"""
-        if self.is_listening:
-            logger.warning("Already listening")
-            return
-        
-        self.is_listening = True
-        
-        # Open audio stream
-        self.stream = self.audio.open(
-            format=self.config.format,
-            channels=self.config.channels,
-            rate=self.config.sample_rate,
-            input=True,
-            frames_per_buffer=self.config.chunk_size,
-            stream_callback=self._audio_callback
-        )
-        
-        self.stream.start_stream()
-        logger.info("Started listening for audio...")
+        """Enhanced start listening with better stream management"""
+        with self.stream_lock:
+            if self.is_listening:
+                logger.warning("Already listening")
+                return
+            
+            try:
+                # Initialize PyAudio if needed
+                if self.audio is None:
+                    self.audio = pyaudio.PyAudio()
+                
+                # Start processing thread
+                self._start_processing_thread()
+                
+                self.is_listening = True
+                
+                # Open audio stream with enhanced settings
+                self.stream = self.audio.open(
+                    format=self.config.format,
+                    channels=self.config.channels,
+                    rate=self.config.sample_rate,
+                    input=True,
+                    frames_per_buffer=self.config.chunk_size,
+                    stream_callback=self._audio_callback,
+                    start=False  # Don't start immediately
+                )
+                
+                # Reset buffer state
+                self.audio_buffer.reset_state()
+                
+                # Start the stream
+                self.stream.start_stream()
+                logger.info("Enhanced audio listening started")
+                
+            except Exception as e:
+                logger.error(f"Failed to start listening: {e}")
+                self.is_listening = False
+                raise
 
     def stop_listening(self):
-        """Stop listening"""
-        if not self.is_listening:
-            return
-        
-        self.is_listening = False
-        
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
-            self.stream = None
-        
-        logger.info("Stopped listening")
+        """Enhanced stop listening with proper cleanup"""
+        with self.stream_lock:
+            if not self.is_listening:
+                return
+            
+            self.is_listening = False
+            
+            try:
+                # Stop processing thread
+                self._stop_processing_thread()
+                
+                # Stop and close stream
+                if self.stream:
+                    if self.stream.is_active():
+                        self.stream.stop_stream()
+                    self.stream.close()
+                    self.stream = None
+                
+                logger.info("Enhanced audio listening stopped")
+                
+            except Exception as e:
+                logger.error(f"Error stopping listening: {e}")
+
+    def pause_for_speech(self):
+        """Pause speech detection during TTS playback"""
+        logger.debug("Pausing speech detection for TTS")
+        self.audio_buffer.pause_detection()
+
+    def resume_after_speech(self):
+        """Resume speech detection after TTS playback"""
+        logger.debug("Resuming speech detection after TTS")
+        self.audio_buffer.resume_detection()
+
+    def _start_processing_thread(self):
+        """Start the processing thread"""
+        if not self.processing_thread_running:
+            self.processing_thread_running = True
+            self.processing_thread = threading.Thread(target=self._processing_worker, daemon=True)
+            self.processing_thread.start()
+            logger.debug("Processing thread started")
+
+    def _stop_processing_thread(self):
+        """Stop the processing thread"""
+        if self.processing_thread_running:
+            self.processing_thread_running = False
+            # Add sentinel to wake up the thread
+            try:
+                self.processing_queue.put(None, timeout=1.0)
+            except queue.Full:
+                pass
+            
+            if self.processing_thread and self.processing_thread.is_alive():
+                self.processing_thread.join(timeout=2.0)
+            
+            # Clear any remaining items
+            while not self.processing_queue.empty():
+                try:
+                    self.processing_queue.get_nowait()
+                except queue.Empty:
+                    break
+                    
+            logger.debug("Processing thread stopped")
 
     def _audio_callback(self, in_data, frame_count, time_info, status):
-        """Audio callback for continuous processing"""
+        """Enhanced audio callback with better error handling"""
         if not self.is_listening:
             return (None, pyaudio.paComplete)
         
-        # Convert audio data to numpy array
-        audio_chunk = np.frombuffer(in_data, dtype=np.int16)
-        
-        # Add to buffer and check for complete utterance
-        utterance_complete = self.audio_buffer.add_chunk(audio_chunk, self.config)
-        
-        if utterance_complete:
-            logger.info(f"🎆 Utterance complete! is_processing: {self.is_processing}")
-            if not self.is_processing:
-                if self.debug: logger.info("🚀 Starting transcription thread...")
-                threading.Thread(target=self._process_audio, daemon=True).start()
-            else:
-                logger.warning("Cannot start transcription - already processing")
+        try:
+            # Convert audio data to numpy array
+            audio_chunk = np.frombuffer(in_data, dtype=np.int16)
+            
+            # Add to buffer and check for complete utterance
+            utterance_complete = self.audio_buffer.add_chunk(audio_chunk, self.config)
+            
+            if utterance_complete:
+                # Get audio data immediately
+                audio_data = self.audio_buffer.get_audio_data()
+                
+                # Queue for processing (non-blocking)
+                try:
+                    self.processing_queue.put(audio_data, block=False)
+                    if self.debug:
+                        logger.debug("Audio queued for processing")
+                except queue.Full:
+                    logger.warning("Processing queue full, dropping audio")
+            
+        except Exception as e:
+            logger.error(f"Error in audio callback: {e}")
         
         return (in_data, pyaudio.paContinue)
 
-    def _process_audio(self):
-        """Process complete audio utterance"""
-        logger.info(f"🔄 _process_audio called, is_processing: {self.is_processing}")
+    def _processing_worker(self):
+        """Enhanced processing worker thread"""
+        logger.debug("Processing worker started")
         
-        if self.is_processing:
-            logger.warning("Already processing audio, skipping")
-            return
-        
-        self.is_processing = True
-        logger.info("🎯 Starting audio processing...")
-        
-        try:
-            # Get audio data from buffer
-            audio_data = self.audio_buffer.get_audio_data()
-            
-            if len(audio_data) > 0:
-                # Transcribe audio
-                transcription = self.stt_engine.transcribe(audio_data, self.config)
+        while self.processing_thread_running:
+            try:
+                # Get audio data from queue
+                audio_data = self.processing_queue.get(timeout=1.0)
                 
-                if transcription:
-                    logger.info(f"Transcribed: '{transcription}'")
+                if audio_data is None:  # Sentinel for shutdown
+                    break
+                
+                if len(audio_data) > 0:
+                    # Transcribe audio
+                    transcription = self.stt_engine.transcribe(audio_data, self.config)
                     
-                    # Check for wake word
-                    if self.wake_detector.detect(transcription):
-                        if self.on_wake_word_callback:
-                            self.on_wake_word_callback()
-                    
-                    # Call speech callback
-                    if self.on_speech_callback:
-                        self.on_speech_callback(transcription)
+                    if transcription:
+                        logger.info(f"Transcribed: '{transcription}'")
+                        
+                        # Check for wake word first
+                        if self.wake_detector.detect(transcription):
+                            if self.on_wake_word_callback:
+                                try:
+                                    self.on_wake_word_callback()
+                                except Exception as e:
+                                    logger.error(f"Wake word callback error: {e}")
+                        
+                        # Call speech callback
+                        if self.on_speech_callback:
+                            try:
+                                self.on_speech_callback(transcription)
+                            except Exception as e:
+                                logger.error(f"Speech callback error: {e}")
+                
+                self.processing_queue.task_done()
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logger.error(f"Error in processing worker: {e}")
         
-        except Exception as e:
-            logger.error(f"Error processing audio: {e}")
-        
-        finally:
-            self.is_processing = False
+        logger.debug("Processing worker stopped")
 
     def listen_and_transcribe(self, timeout: float = 10.0) -> str:
-        """Listen from microphone and return transcription text
+        """Enhanced listen and transcribe with better state management"""
+        if self.debug: 
+            logger.info(f"Starting listen_and_transcribe with {timeout}s timeout")
         
-        Args:
-            timeout: Maximum time to wait for speech (seconds)
-            
-        Returns:
-            str: The transcribed text, or empty string if no speech detected
-        """
-        if self.debug: logger.info(f"Starting listen_and_transcribe with {timeout}s timeout")
-        
-        # Create a temporary audio buffer for this session
+        # Create a temporary enhanced buffer for this session
         temp_buffer = AudioBuffer(debug=self.debug)
         transcription = ""
         
         try:
+            # Use existing audio instance or create new one
+            if self.audio is None:
+                audio = pyaudio.PyAudio()
+            else:
+                audio = self.audio
+            
             # Open audio stream for recording
-            stream = self.audio.open(
+            stream = audio.open(
                 format=self.config.format,
                 channels=self.config.channels,
                 rate=self.config.sample_rate,
@@ -515,7 +668,8 @@ class JarvisSTT:
                 frames_per_buffer=self.config.chunk_size
             )
             
-            if self.debug: logger.info("Listening for speech...")
+            if self.debug: 
+                logger.info("Listening for speech...")
             start_time = time.time()
             
             while time.time() - start_time < timeout:
@@ -549,6 +703,10 @@ class JarvisSTT:
             stream.stop_stream()
             stream.close()
             
+            # Only close audio if we created it
+            if self.audio is None:
+                audio.terminate()
+            
             if self.debug and not transcription:
                 logger.info("No speech detected within timeout period")
             
@@ -573,13 +731,20 @@ class JarvisSTT:
             return ""
 
     def __del__(self):
-        """Cleanup"""
-        self.stop_listening()
-        if hasattr(self, 'audio'):
-            self.audio.terminate()
+        """Enhanced cleanup"""
+        try:
+            self.stop_listening()
+            if hasattr(self, 'audio') and self.audio:
+                self.audio.terminate()
+        except:
+            pass
+
+
+# Backward compatibility aliases
+EnhancedJarvisSTT = JarvisSTT  # For any code that might still reference the old enhanced class
+
 
 # Example usage and testing
-
 if __name__ == "__main__":
     def on_speech(text: str):
         print(f"Speech detected: {text}")
@@ -588,7 +753,7 @@ if __name__ == "__main__":
         print("Wake word detected! Jarvis is listening...")
 
     # Create STT instance
-    jarvis = JarvisSTT(stt_engine="whisper", model_name="base")
+    jarvis = JarvisSTT(stt_engine="whisper", model_name="base", debug=True)
 
     # Set callbacks
     jarvis.set_speech_callback(on_speech)
@@ -597,7 +762,7 @@ if __name__ == "__main__":
     # Start listening
     try:
         jarvis.start_listening()
-        print("Listening... Say 'Jarvis' to activate. Press Ctrl+C to stop.")
+        print("Enhanced STT listening... Say 'Jarvis' to activate. Press Ctrl+C to stop.")
 
         # Keep the main thread alive
         while True:
@@ -607,5 +772,4 @@ if __name__ == "__main__":
         print("\nStopping...")
         jarvis.stop_listening()
 
-    print("Jarvis STT pipeline stopped.")
-
+    print("Enhanced Jarvis STT pipeline stopped.")

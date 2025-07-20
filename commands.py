@@ -414,8 +414,8 @@ class JarvisCommands:
 def create_ai_config(
     anthropic_enabled: bool = True,
     anthropic_model: str = "claude-3-haiku-20240307",
-    openai_enabled: bool = True,
-    openai_model: str = "gpt-3.5-turbo",
+    deepseek_enabled: bool = True,
+    deepseek_model: str = "deepseek-chat",
     prefer_anthropic: bool = True
 ) -> Dict[str, Any]:
     """Create AI configuration for the commands module"""
@@ -427,9 +427,9 @@ def create_ai_config(
                 "model": anthropic_model,
                 "priority": 1 if prefer_anthropic else 2
             },
-            "openai": {
-                "enabled": openai_enabled,
-                "model": openai_model,
+            "deepseek": {
+                "enabled": deepseek_enabled,
+                "model": deepseek_model,
                 "priority": 2 if prefer_anthropic else 1
             },
             "local": {
@@ -461,7 +461,7 @@ if __name__ == "__main__":
     # Create AI config
     ai_config = create_ai_config(
         anthropic_enabled=True,
-        openai_enabled=True,
+        deepseek_enabled=True,
         prefer_anthropic=True
     )
     

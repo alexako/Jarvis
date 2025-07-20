@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class BrainProvider(Enum):
     """Available AI brain providers"""
     ANTHROPIC = "anthropic"
-    OPENAI = "openai"
+    DEEPSEEK = "deepseek"
     LOCAL = "local"
 
 class ComplexityLevel(Enum):
@@ -198,34 +198,38 @@ Use any provided context naturally in your responses."""
         except Exception:
             return False
 
-class OpenAIBrain(BaseBrain):
-    """OpenAI GPT-powered AI brain"""
+class DeepSeekBrain(BaseBrain):
+    """DeepSeek AI-powered brain"""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-3.5-turbo"):
-        super().__init__("OpenAI GPT")
+    def __init__(self, api_key: Optional[str] = None, model: str = "deepseek-chat"):
+        super().__init__("DeepSeek")
         
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY") 
+        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY") 
         self.model = model
+        self.base_url = "https://api.deepseek.com"
         
         if not self.api_key:
-            logger.warning("OpenAI API key not found. Set OPENAI_API_KEY environment variable.")
+            logger.warning("DeepSeek API key not found. Set DEEPSEEK_API_KEY environment variable.")
             return
         
         try:
+            # DeepSeek uses OpenAI-compatible API
             import openai
-            openai.api_key = self.api_key
-            self.openai = openai
+            self.client = openai.OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url
+            )
             self.available = True
-            logger.info(f"OpenAI brain initialized with {model}")
+            logger.info(f"DeepSeek brain initialized with {model}")
         except ImportError:
             logger.error("OpenAI library not installed. Run: pip install openai")
         except Exception as e:
-            logger.error(f"Failed to initialize OpenAI brain: {e}")
+            logger.error(f"Failed to initialize DeepSeek brain: {e}")
     
     def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
-        """Process request through OpenAI"""
+        """Process request through DeepSeek"""
         if not self.available:
-            raise Exception("OpenAI brain not available")
+            raise Exception("DeepSeek brain not available")
         
         try:
             # Build messages
@@ -251,7 +255,7 @@ class OpenAIBrain(BaseBrain):
             messages.append({"role": "user", "content": full_message})
             
             # Get response
-            response = self.openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=200,
@@ -272,16 +276,16 @@ class OpenAIBrain(BaseBrain):
             return assistant_response
             
         except Exception as e:
-            logger.error(f"OpenAI request failed: {e}")
+            logger.error(f"DeepSeek request failed: {e}")
             raise
     
     def is_healthy(self) -> bool:
-        """Test if OpenAI API is responsive"""
+        """Test if DeepSeek API is responsive"""
         if not self.available:
             return False
         
         try:
-            response = self.openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": "Test"}],
                 max_tokens=5
@@ -349,12 +353,12 @@ class AIBrainManager:
             if brain.available:
                 self.brains[BrainProvider.ANTHROPIC] = brain
         
-        # Initialize OpenAI
-        if providers_config.get("openai", {}).get("enabled", False):
-            model = providers_config["openai"].get("model", "gpt-3.5-turbo")
-            brain = OpenAIBrain(model=model)
+        # Initialize DeepSeek
+        if providers_config.get("deepseek", {}).get("enabled", False):
+            model = providers_config["deepseek"].get("model", "deepseek-chat")
+            brain = DeepSeekBrain(model=model)
             if brain.available:
-                self.brains[BrainProvider.OPENAI] = brain
+                self.brains[BrainProvider.DEEPSEEK] = brain
         
         # Initialize Local (when implemented)
         if providers_config.get("local", {}).get("enabled", False):
@@ -492,4 +496,4 @@ if __name__ == "__main__":
     
     else:
         print("No AI brain providers available.")
-        print("Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variables.")
+        print("Set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY environment variables.")

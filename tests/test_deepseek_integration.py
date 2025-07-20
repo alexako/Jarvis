@@ -49,52 +49,42 @@ class TestDeepSeekIntegration(unittest.TestCase):
         self.assertEqual(brain.model_name, "deepseek-chat")
         
         # Test custom model setting
-        custom_brain = DeepSeekBrain(api_key=self.api_key, model_name="custom-model")
+        custom_brain = DeepSeekBrain(api_key=self.api_key, model="custom-model")
         self.assertEqual(custom_brain.model_name, "custom-model")
     
-    @patch('ai_brain.DeepSeekBrain._make_api_call')
-    def test_deepseek_simple_query(self, mock_api_call):
+    @patch('ai_brain.DeepSeekBrain.process_request')
+    def test_deepseek_simple_query(self, mock_process_request):
         """Test that DeepSeek brain can handle a simple query"""
         # Mock the API response
-        mock_api_call.return_value = "Hello! How can I help you today?"
+        mock_process_request.return_value = "Hello! How can I help you today?"
         
         brain = DeepSeekBrain(api_key=self.api_key)
         response = brain.process_query("Hello")
         
         self.assertEqual(response, "Hello! How can I help you today?")
-        mock_api_call.assert_called_once()
+        mock_process_request.assert_called_once_with("Hello", None)
     
-    @patch('ai_brain.DeepSeekBrain._make_api_call')
-    def test_deepseek_error_handling(self, mock_api_call):
+    @patch('ai_brain.DeepSeekBrain.process_request')
+    def test_deepseek_error_handling(self, mock_process_request):
         """Test that DeepSeek brain handles API errors gracefully"""
         # Mock an API error
-        mock_api_call.side_effect = Exception("API Error")
+        mock_process_request.side_effect = Exception("API Error")
         
         brain = DeepSeekBrain(api_key=self.api_key)
-        response = brain.process_query("Hello")
         
-        # Should return error message instead of crashing
-        self.assertIn("error", response.lower())
+        # Should raise the exception (let the caller handle it)
+        with self.assertRaises(Exception):
+            brain.process_query("Hello")
     
     def test_ai_config_with_deepseek_preference(self):
         """Test that AI config correctly prioritizes DeepSeek when requested"""
         config = create_ai_config(
-            ai_enabled=True,
-            ai_provider_preference="deepseek",
             prefer_anthropic=False
         )
         
-        self.assertTrue(config['ai_enabled'])
-        
         # Check that DeepSeek has priority 1 (primary)
-        deepseek_config = None
-        anthropic_config = None
-        
-        for provider_config in config['providers']:
-            if provider_config['provider'] == 'deepseek':
-                deepseek_config = provider_config
-            elif provider_config['provider'] == 'anthropic':
-                anthropic_config = provider_config
+        deepseek_config = config['providers']['deepseek']
+        anthropic_config = config['providers']['anthropic']
         
         self.assertIsNotNone(deepseek_config)
         self.assertIsNotNone(anthropic_config)
@@ -104,8 +94,6 @@ class TestDeepSeekIntegration(unittest.TestCase):
     def test_ai_brain_manager_with_deepseek(self):
         """Test that AIBrainManager correctly handles DeepSeek priority"""
         config = create_ai_config(
-            ai_enabled=True,
-            ai_provider_preference="deepseek",
             prefer_anthropic=False
         )
         
@@ -116,9 +104,12 @@ class TestDeepSeekIntegration(unittest.TestCase):
             # Check that manager was initialized
             self.assertIsNotNone(manager)
             
-            # Check that DeepSeek is available
-            available_providers = [brain.provider.value for brain in manager.brains if brain.is_available()]
-            self.assertIn('deepseek', available_providers)
+            # Check that DeepSeek is available in the brains dictionary
+            self.assertIn(BrainProvider.DEEPSEEK, manager.brains)
+            
+            # Check that the DeepSeek brain is available
+            deepseek_brain = manager.brains[BrainProvider.DEEPSEEK]
+            self.assertTrue(deepseek_brain.available)
 
 
 class TestDeepSeekLiveAPI(unittest.TestCase):

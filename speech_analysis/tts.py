@@ -433,20 +433,25 @@ class JarvisTTS:
             self.on_speech_start_callback()
 
         try:
-            # Synthesize speech
-            if isinstance(self.tts_engine, CoquiTTS) and self.jarvis_voice_path:
-                # Use voice cloning if available
-                audio_data = self.tts_engine.clone_voice(enhanced_text, self.jarvis_voice_path)
+            # Handle system TTS engine (when tts_engine is None)
+            if self.tts_engine is None:
+                # Use system say directly
+                self._fallback_system_say(enhanced_text)
             else:
-                audio_data = self.tts_engine.synthesize(enhanced_text)
+                # Synthesize speech with other engines
+                if isinstance(self.tts_engine, CoquiTTS) and self.jarvis_voice_path:
+                    # Use voice cloning if available
+                    audio_data = self.tts_engine.clone_voice(enhanced_text, self.jarvis_voice_path)
+                else:
+                    audio_data = self.tts_engine.synthesize(enhanced_text)
 
-            if audio_data:
-                # Play audio
-                self.player.play_audio_data(audio_data)
+                if audio_data:
+                    # Play audio
+                    self.player.play_audio_data(audio_data)
 
-                # Wait for playback to complete
-                while self.player.is_playing:
-                    time.sleep(0.1)
+                    # Wait for playback to complete
+                    while self.player.is_playing:
+                        time.sleep(0.1)
 
         except Exception as e:
             logger.error(f"Speech synthesis failed: {e}")
@@ -475,19 +480,51 @@ class JarvisTTS:
         else:
             self.speak(text, use_personality=False)
     
+    def _calculate_speech_timeout(self, text: str) -> float:
+        """Calculate appropriate timeout based on text length and speech rate"""
+        # Get configuration values
+        config = get_config()
+        tts_config = config.get('tts', {})
+        
+        speech_rate = tts_config.get('speech_rate_wpm', 150)  # words per minute
+        buffer_factor = tts_config.get('timeout_buffer_factor', 0.5)
+        min_timeout = tts_config.get('min_timeout_seconds', 30)
+        max_timeout = tts_config.get('max_timeout_seconds', 300)
+        
+        # Estimate speaking time
+        word_count = len(text.split())
+        estimated_time = (word_count / speech_rate) * 60  # Convert to seconds
+        
+        # Add buffer time for processing and pauses
+        buffer_time = max(10, estimated_time * buffer_factor)  # At least 10 seconds buffer
+        
+        # Set timeout with configured minimum and maximum
+        timeout = max(min_timeout, estimated_time + buffer_time)
+        timeout = min(max_timeout, timeout)
+        
+        return timeout
+
     def _fallback_system_say(self, text: str):
-        """Fallback to macOS say command"""
+        """Fallback to macOS say command with dynamic timeout"""
         try:
             import subprocess
             import platform
             
             if platform.system() == "Darwin":  # macOS
-                # Use macOS say command with Daniel voice
-                subprocess.run(["say", "-v", "Daniel", text], check=True)
-                logger.info(f"System say: '{text}'")
+                # Calculate appropriate timeout based on text length
+                timeout = self._calculate_speech_timeout(text)
+                
+                logger.info(f"Speaking text ({len(text.split())} words, {timeout:.1f}s timeout): '{text[:100]}{'...' if len(text) > 100 else ''}'")
+                
+                # Use macOS say command with dynamic timeout
+                subprocess.run(["say", "-v", "Daniel", text], check=True, timeout=timeout)
+                logger.info(f"System say completed successfully")
             else:
                 logger.error("System say fallback not available on this platform")
                 
+        except subprocess.TimeoutExpired:
+            word_count = len(text.split())
+            logger.error(f"System say timed out after {timeout:.1f}s for {word_count} words. Text may be too long or system is overloaded.")
         except Exception as e:
             logger.error(f"System say failed: {e}")
 
@@ -621,7 +658,8 @@ if __name__ == "__main__":
         print("Jarvis finished speaking")
 
     # Create TTS instance
-    jarvis = JarvisTTS(tts_engine="pyttsx3")  # Use "coqui" for voice cloning
+    # jarvis = JarvisTTS(tts_engine="pyttsx3")  # Use "coqui" for voice cloning
+    jarvis = JarvisTTS(tts_engine="system")  # Use "coqui" for voice cloning
 
     # Set callbacks
     jarvis.set_speech_callbacks(on_speech_start, on_speech_end)

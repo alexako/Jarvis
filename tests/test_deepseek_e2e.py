@@ -197,7 +197,10 @@ class TestDeepSeekSystemIntegration(unittest.TestCase):
             
             # Test that it has the required interface
             self.assertTrue(hasattr(brain, 'process_request'))
-            self.assertTrue(hasattr(brain, 'is_available'))
+            self.assertTrue(hasattr(brain, 'available'))  # Check attribute, not method
+            
+            # Test that the brain is actually available with API key
+            self.assertTrue(brain.available)
             
         except Exception as e:
             self.fail(f"Failed to import or create DeepSeek brain: {e}")

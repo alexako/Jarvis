@@ -91,6 +91,18 @@ class ConfigManager:
         """Get debug configuration section"""
         return self.get('debug', {})
     
+    def get_tts_config(self, performance_mode: str = None) -> Dict[str, Any]:
+        """Get TTS configuration section with optional performance mode"""
+        if performance_mode and performance_mode in ['fast', 'balanced', 'accurate']:
+            mode_config = self.get(f'performance_modes.{performance_mode}.tts', {})
+            if mode_config:
+                # Merge with base TTS config
+                base_config = self.get('tts', {})
+                merged_config = base_config.copy()
+                merged_config.update(mode_config)
+                return merged_config
+        return self.get('tts', {})
+    
     def set(self, key_path: str, value: Any):
         """
         Set configuration value using dot notation

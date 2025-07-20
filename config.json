@@ -85,9 +85,26 @@
     "audio_compression": false
   },
   "tts": {
+    "default_engine": "system",
     "speech_rate_wpm": 150,
     "timeout_buffer_factor": 0.5,
     "min_timeout_seconds": 30,
-    "max_timeout_seconds": 300
+    "max_timeout_seconds": 300,
+    "piper": {
+      "voice_model": "en_US-lessac-medium",
+      "voice_directory": "voices",
+      "inference_settings": {
+        "noise_scale": 0.667,
+        "length_scale": 1.0,
+        "noise_w": 0.8
+      }
+    },
+    "pyttsx3": {
+      "voice_speed": 180,
+      "voice_pitch": 1.0,
+      "voice_volume": 0.9,
+      "preferred_voice": "Daniel"
+    },
+    "jarvis_personality": true
   }
 }

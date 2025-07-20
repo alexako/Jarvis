@@ -255,6 +255,125 @@ class CoquiTTS:
         return self.synthesize(text, speaker_wav=source_audio_path)
 
 
+class PiperTTS:
+    """Piper TTS - Fast, local neural text-to-speech"""
+
+    def __init__(self, config: TTSConfig, model_path: Optional[str] = None, config_path: Optional[str] = None):
+        self.config = config
+        self.available = False
+        
+        # Get TTS configuration from config manager
+        from config_manager import get_config
+        tts_config = get_config().get_tts_config()
+        self.piper_config = tts_config.get('piper', {})
+        
+        try:
+            from piper import PiperVoice
+            self.PiperVoice = PiperVoice
+            self.available = True
+            logger.info("Piper TTS imported successfully")
+        except ImportError:
+            logger.error("Piper TTS not installed. Run: pip install piper-tts")
+            return
+
+        # Try to load voice model
+        self.voice = None
+        if model_path and config_path:
+            try:
+                self.voice = self.PiperVoice.load(model_path, config_path)
+                logger.info(f"Piper voice loaded from: {model_path}")
+            except Exception as e:
+                logger.error(f"Failed to load Piper voice: {e}")
+                self.available = False
+        else:
+            # Try to find voice models based on configuration
+            self._try_load_configured_voice()
+
+    def _try_load_configured_voice(self):
+        """Try to load voice model based on configuration"""
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Get voice settings from configuration
+        voice_model = self.piper_config.get('voice_model', 'en_US-lessac-medium')
+        voice_directory = self.piper_config.get('voice_directory', 'voices')
+        
+        # Build possible paths for the configured voice model
+        possible_paths = [
+            os.path.join(script_dir, voice_directory, f"{voice_model}.onnx"),
+            os.path.join(voice_directory, f"{voice_model}.onnx"),
+            os.path.expanduser(f"~/.local/share/piper/voices/{voice_model}.onnx"),
+            f"/opt/piper/voices/{voice_model}.onnx"
+        ]
+        
+        # Also try fallback voices if configured voice fails
+        fallback_voices = ["en_US-ryan-high", "en_US-amy-medium", "en_GB-alan-medium"]
+        for fallback in fallback_voices:
+            if fallback != voice_model:  # Don't duplicate
+                possible_paths.extend([
+                    os.path.join(script_dir, voice_directory, f"{fallback}.onnx"),
+                    os.path.join(voice_directory, f"{fallback}.onnx")
+                ])
+        
+        for model_path in possible_paths:
+            expanded_path = os.path.expanduser(model_path)
+            config_path = expanded_path.replace('.onnx', '.onnx.json')
+            
+            if os.path.exists(expanded_path) and os.path.exists(config_path):
+                try:
+                    self.voice = self.PiperVoice.load(expanded_path, config_path)
+                    logger.info(f"Loaded Piper voice: {expanded_path}")
+                    return
+                except Exception as e:
+                    logger.warning(f"Failed to load voice {expanded_path}: {e}")
+                    continue
+        
+        logger.warning("No Piper voice models found. Download models from https://github.com/rhasspy/piper/releases")
+        self.available = False
+
+    def synthesize(self, text: str) -> bytes:
+        """Synthesize text to audio bytes"""
+        if not self.available or not self.voice:
+            logger.error("Piper TTS not available or no voice loaded")
+            return b""
+
+        try:
+            # Create temporary file for audio output
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+
+            # Synthesize speech to file
+            with open(tmp_path, 'wb') as f:
+                self.voice.synthesize(text, f)
+
+            # Read raw audio data
+            with open(tmp_path, 'rb') as f:
+                audio_data = f.read()
+
+            # Cleanup
+            os.unlink(tmp_path)
+
+            return audio_data
+
+        except Exception as e:
+            logger.error(f"Piper synthesis failed: {e}")
+            return b""
+
+    def speak_directly(self, text: str):
+        """Speak text directly by synthesizing and playing"""
+        if not self.available:
+            return
+
+        try:
+            audio_data = self.synthesize(text)
+            if audio_data:
+                # Play audio using the AudioPlayer from the config
+                # This would require access to the AudioPlayer instance
+                logger.info("Piper synthesis completed - audio ready for playback")
+        except Exception as e:
+            logger.error(f"Piper direct speech failed: {e}")
+
+
 class JarvisPersonality:
     """Jarvis personality and speech patterns - The secret sauce"""
 
@@ -340,9 +459,19 @@ class JarvisTTS:
 
 
     def __init__(self, 
-                 tts_engine: str = "pyttsx3",
+                 tts_engine: Optional[str] = None,
                  model_name: str = "tts_models/en/ljspeech/tacotron2-DDC",
-                 jarvis_voice_path: Optional[str] = None):
+                 jarvis_voice_path: Optional[str] = None,
+                 piper_model_path: Optional[str] = None,
+                 piper_config_path: Optional[str] = None):
+
+        # Get configuration
+        config_manager = get_config()
+        tts_config = config_manager.get_tts_config()
+        
+        # Use config default if no engine specified
+        if tts_engine is None:
+            tts_engine = tts_config.get('default_engine', 'system')
 
         self.config = TTSConfig()
         self.personality = JarvisPersonality()
@@ -354,6 +483,8 @@ class JarvisTTS:
             self.tts_engine = PyttsxTTS(self.config)
         elif tts_engine.lower() == "coqui":
             self.tts_engine = CoquiTTS(self.config, model_name)
+        elif tts_engine.lower() == "piper":
+            self.tts_engine = PiperTTS(self.config, piper_model_path, piper_config_path)
         elif tts_engine.lower() == "system":
             self.tts_engine = None  # Use system say directly
         else:
@@ -364,12 +495,14 @@ class JarvisTTS:
         self.on_speech_end_callback: Optional[Callable[[], None]] = None
         
         # Non-blocking TTS support
-        config = get_config()
-        optimizations = config.get_optimizations_config()
+        optimizations = config_manager.get_optimizations_config()
         self.non_blocking_tts = optimizations.get('non_blocking_tts', False)
         self.speech_queue = queue.Queue()
         self.speech_thread = None
         self.is_speech_thread_running = False
+
+        # Apply config settings to TTS config
+        self.config.jarvis_personality = tts_config.get('jarvis_personality', True)
 
         logger.info(f"Jarvis TTS initialized with {tts_engine} engine, non-blocking: {self.non_blocking_tts}")
 

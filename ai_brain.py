@@ -97,6 +97,8 @@ class AnthropicBrain(BaseBrain):
         
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.model = model
+        self.model_name = model  # Alias for compatibility with tests
+        self.provider = BrainProvider.ANTHROPIC  # Add provider attribute
         
         if not self.api_key:
             logger.warning("Anthropic API key not found. Set ANTHROPIC_API_KEY environment variable.")
@@ -182,6 +184,10 @@ Use any provided context naturally in your responses."""
             logger.error(f"Anthropic request failed: {e}")
             raise
     
+    def process_query(self, user_input: str, context: Dict[str, Any] = None) -> str:
+        """Alias for process_request for backward compatibility"""
+        return self.process_request(user_input, context)
+    
     def is_healthy(self) -> bool:
         """Test if Anthropic API is responsive"""
         if not self.available:
@@ -206,6 +212,8 @@ class DeepSeekBrain(BaseBrain):
         
         self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY") 
         self.model = model
+        self.model_name = model  # Alias for compatibility with tests
+        self.provider = BrainProvider.DEEPSEEK  # Add provider attribute
         self.base_url = "https://api.deepseek.com"
         
         if not self.api_key:
@@ -278,6 +286,10 @@ class DeepSeekBrain(BaseBrain):
         except Exception as e:
             logger.error(f"DeepSeek request failed: {e}")
             raise
+    
+    def process_query(self, user_input: str, context: Dict[str, Any] = None) -> str:
+        """Alias for process_request for backward compatibility"""
+        return self.process_request(user_input, context)
     
     def is_healthy(self) -> bool:
         """Test if DeepSeek API is responsive"""

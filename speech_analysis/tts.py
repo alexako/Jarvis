@@ -433,20 +433,25 @@ class JarvisTTS:
             self.on_speech_start_callback()
 
         try:
-            # Synthesize speech
-            if isinstance(self.tts_engine, CoquiTTS) and self.jarvis_voice_path:
-                # Use voice cloning if available
-                audio_data = self.tts_engine.clone_voice(enhanced_text, self.jarvis_voice_path)
+            # Handle system TTS engine (when tts_engine is None)
+            if self.tts_engine is None:
+                # Use system say directly
+                self._fallback_system_say(enhanced_text)
             else:
-                audio_data = self.tts_engine.synthesize(enhanced_text)
+                # Synthesize speech with other engines
+                if isinstance(self.tts_engine, CoquiTTS) and self.jarvis_voice_path:
+                    # Use voice cloning if available
+                    audio_data = self.tts_engine.clone_voice(enhanced_text, self.jarvis_voice_path)
+                else:
+                    audio_data = self.tts_engine.synthesize(enhanced_text)
 
-            if audio_data:
-                # Play audio
-                self.player.play_audio_data(audio_data)
+                if audio_data:
+                    # Play audio
+                    self.player.play_audio_data(audio_data)
 
-                # Wait for playback to complete
-                while self.player.is_playing:
-                    time.sleep(0.1)
+                    # Wait for playback to complete
+                    while self.player.is_playing:
+                        time.sleep(0.1)
 
         except Exception as e:
             logger.error(f"Speech synthesis failed: {e}")
@@ -482,12 +487,14 @@ class JarvisTTS:
             import platform
             
             if platform.system() == "Darwin":  # macOS
-                # Use macOS say command with Daniel voice
-                subprocess.run(["say", "-v", "Daniel", text], check=True)
+                # Use macOS say command with Daniel voice and timeout
+                subprocess.run(["say", "-v", "Daniel", text], check=True, timeout=10)
                 logger.info(f"System say: '{text}'")
             else:
                 logger.error("System say fallback not available on this platform")
                 
+        except subprocess.TimeoutExpired:
+            logger.error(f"System say timed out after 10 seconds for text: '{text}'")
         except Exception as e:
             logger.error(f"System say failed: {e}")
 
@@ -621,7 +628,8 @@ if __name__ == "__main__":
         print("Jarvis finished speaking")
 
     # Create TTS instance
-    jarvis = JarvisTTS(tts_engine="pyttsx3")  # Use "coqui" for voice cloning
+    # jarvis = JarvisTTS(tts_engine="pyttsx3")  # Use "coqui" for voice cloning
+    jarvis = JarvisTTS(tts_engine="system")  # Use "coqui" for voice cloning
 
     # Set callbacks
     jarvis.set_speech_callbacks(on_speech_start, on_speech_end)

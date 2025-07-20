@@ -5,7 +5,7 @@ import datetime
 import threading
 import logging
 from speech_analysis import JarvisSTT, JarvisTTS
-from commands import JarvisCommands
+from commands import JarvisCommands, create_ai_config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -13,15 +13,23 @@ logger = logging.getLogger(__name__)
 
 class JarvisAssistant:
     """Complete Jarvis Voice Assistant with STT and TTS"""
-    
-    def __init__(self, prevent_feedback=False, performance_mode=None):
+
+    def __init__(self, ai_enabled=False, prevent_feedback=False, performance_mode=None):
         self.performance_mode = performance_mode
         self.stt = JarvisSTT(stt_engine="whisper", model_name="base", performance_mode=performance_mode)
         self.tts = JarvisTTS(tts_engine="system")
         self.is_active = False
         self.is_listening = False
+        self.ai_enabled = ai_enabled
         self.prevent_feedback = prevent_feedback
         self.is_speaking = False  # Track when TTS is active
+        
+        # Create AI configuration
+        ai_config = create_ai_config(
+            anthropic_enabled=self.ai_enabled,     # Use Claude
+            openai_enabled=self.ai_enabled,        # OpenAI as fallback
+            prefer_anthropic=True                  # Claude first, OpenAI fallback
+        )
         
         # Initialize centralized command system
         self.commands = JarvisCommands(self.tts, self)
@@ -148,6 +156,8 @@ def main():
                        help='Use balanced performance mode (default settings)')
     parser.add_argument('--accurate', action='store_true', 
                        help='Use accurate performance mode (larger models, better quality)')
+    parser.add_argument('--enable-ai', action='store_true', 
+                       help='Enable AI features (Claude and OpenAI) for advanced interactions')
     
     args = parser.parse_args()
     
@@ -164,14 +174,17 @@ def main():
         performance_mode = "balanced"
     elif args.accurate:
         performance_mode = "accurate"
-    
+
     # Display settings
     if args.prevent_feedback:
         print("🔇 Feedback prevention enabled")
     if performance_mode:
         print(f"⚡ Performance mode: {performance_mode}")
+    if args.enable_ai:
+        print("🤖 AI features enabled (Claude and OpenAI)")
     
     assistant = JarvisAssistant(prevent_feedback=args.prevent_feedback, 
+                                ai_enabled=args.enable_ai,
                                performance_mode=performance_mode)
     assistant.start()
 

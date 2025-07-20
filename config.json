@@ -83,5 +83,11 @@
     "smart_silence_detection": true,
     "non_blocking_tts": true,
     "audio_compression": false
+  },
+  "tts": {
+    "speech_rate_wpm": 150,
+    "timeout_buffer_factor": 0.5,
+    "min_timeout_seconds": 30,
+    "max_timeout_seconds": 300
   }
 }

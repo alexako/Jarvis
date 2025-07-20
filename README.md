@@ -46,10 +46,53 @@ python quick_test.py
 - **Real-time Processing**: Continuous listening with callback-based processing
 
 ### 🔊 Text-to-Speech (TTS)
-- **pyttsx3 Engine**: Reliable cross-platform TTS
+- **Multiple TTS Engines**: Support for pyttsx3, Piper TTS, Coqui TTS, and system TTS
+- **Piper TTS**: Fast, local neural text-to-speech with high-quality voices
+- **pyttsx3 Engine**: Reliable cross-platform TTS fallback
 - **British Voice**: Uses Daniel voice for authentic Jarvis experience
 - **Personality Enhancement**: Adds formal "sir" addressing and contextual responses
+- **Configurable Voice Models**: Easy switching between different neural voices
 - **Direct Speech**: Optimized for immediate audio output
+
+#### 🎙️ Piper Voice Models Setup
+Piper TTS requires voice models to be downloaded separately due to file size limitations.
+
+**Download Voice Models:**
+1. Visit: https://huggingface.co/rhasspy/piper-voices
+2. Download your preferred voice models (`.onnx` and `.onnx.json` files)
+3. Place them in the `voices/` directory in your project root
+
+**Recommended Models:**
+- `en_US-lessac-medium.onnx` - High-quality American English (default)
+- `en_US-ryan-high.onnx` - High-quality male American English
+- `en_GB-alan-medium.onnx` - British English accent
+
+**Example:**
+```bash
+# Create voices directory
+mkdir -p voices
+
+# Download lessac voice (American English)
+curl -L -o voices/en_US-lessac-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+
+curl -L -o voices/en_US-lessac-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+```
+
+**Configuration:**
+Edit `config.json` to set your preferred voice:
+```json
+{
+  "tts": {
+    "default_engine": "piper",
+    "piper": {
+      "voice_model": "en_US-lessac-medium",
+      "voice_directory": "voices"
+    }
+  }
+}
+```
 
 ### 🤖 AI Provider Support
 - **Dual AI Integration**: Support for both DeepSeek and Anthropic Claude
@@ -154,11 +197,29 @@ pip install -r requirements.txt
 
 Key packages:
 - `openai-whisper` - STT engine
-- `pyttsx3` - TTS engine
+- `pyttsx3` - TTS engine fallback
+- `piper-tts` - Neural TTS engine
 - `pyaudio` - Audio I/O
 - `numpy` - Audio processing
 - `anthropic` - Anthropic Claude API (optional)
 - `openai` - DeepSeek API (optional)
+
+### Piper Voice Models (Required for Neural TTS)
+After installing dependencies, download voice models for Piper TTS:
+
+```bash
+# Create voices directory
+mkdir -p voices
+
+# Download recommended voice models
+curl -L -o voices/en_US-lessac-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+
+curl -L -o voices/en_US-lessac-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+```
+
+**Alternative voices available at:** https://huggingface.co/rhasspy/piper-voices
 
 ### API Keys (Optional - for AI features)
 ```bash

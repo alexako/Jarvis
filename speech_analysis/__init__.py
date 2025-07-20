@@ -5,7 +5,7 @@ This module provides speech-to-text and text-to-speech capabilities using Whispe
 pyttsx3, and Coqui TTS engines, along with wake word detection and voice activity detection.
 """
 
-from .stt import JarvisSTT, WhisperSTT, VoskSTT, AudioConfig, AudioBuffer, WakeWordDetector
+from .stt import JarvisSTT, WhisperSTT, VoskSTT, AudioConfig, AudioBuffer, WakeWordDetector, EnhancedJarvisSTT
 from .tts import JarvisTTS, PyttsxTTS, CoquiTTS, TTSConfig, JarvisPersonality, AudioPlayer
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     'AudioConfig',
     'AudioBuffer',
     'WakeWordDetector',
+    'EnhancedJarvisSTT',
     'JarvisTTS',
     'PyttsxTTS',
     'CoquiTTS',

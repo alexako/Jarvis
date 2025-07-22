@@ -619,20 +619,19 @@ class JarvisSTT:
                     if transcription:
                         logger.info(f"Transcribed: '{transcription}'")
                         
-                        # Check for wake word first
-                        if self.wake_detector.detect(transcription):
-                            if self.on_wake_word_callback:
-                                try:
-                                    self.on_wake_word_callback()
-                                except Exception as e:
-                                    logger.error(f"Wake word callback error: {e}")
-                        
-                        # Call speech callback
+                        # Call speech callback (wake word detection handled at assistant level)
                         if self.on_speech_callback:
                             try:
                                 self.on_speech_callback(transcription)
                             except Exception as e:
                                 logger.error(f"Speech callback error: {e}")
+                        
+                        # Only call wake word callback if no speech callback is set (for backwards compatibility)
+                        elif self.on_wake_word_callback and self.wake_detector.detect(transcription):
+                            try:
+                                self.on_wake_word_callback()
+                            except Exception as e:
+                                logger.error(f"Wake word callback error: {e}")
                 
                 self.processing_queue.task_done()
                 

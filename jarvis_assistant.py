@@ -60,7 +60,7 @@ class EnhancedJarvisAssistant:
         
         # Set up STT callbacks
         self.stt.set_speech_callback(self.on_speech_received)
-        self.stt.set_wake_word_callback(self.on_wake_word_detected)
+        # Note: Wake word detection handled in on_speech_received, not separately
         
         # Enhanced TTS callbacks for better state management
         self.tts.set_speech_callbacks(

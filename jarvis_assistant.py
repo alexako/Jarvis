@@ -46,6 +46,8 @@ class EnhancedJarvisAssistant:
         self.last_speech_time = 0
         self.speech_cooldown = 0.5  # Minimum time between speeches
         self.response_timeout = 30.0  # Max time for a response
+        self.inactive_timeout = 60.0  # Auto-deactivate after 60 seconds of inactivity
+        self.deactivation_timer = None
         
         # Create AI configuration
         prefer_anthropic = (ai_provider_preference == "anthropic")
@@ -93,6 +95,37 @@ class EnhancedJarvisAssistant:
             self.stt.resume_after_speech()
             logger.debug("STT resumed after TTS completion")
     
+    def _activate_jarvis(self):
+        """Activate Jarvis and start deactivation timer"""
+        self.is_active = True
+        self.last_speech_time = time.time()
+        self._reset_deactivation_timer()
+        logger.info("🟢 Jarvis activated")
+    
+    def _deactivate_jarvis(self):
+        """Deactivate Jarvis and return to wake-word-only mode"""
+        self.is_active = False
+        if self.deactivation_timer:
+            self.deactivation_timer.cancel()
+            self.deactivation_timer = None
+        logger.info("🔴 Jarvis deactivated - wake word required")
+    
+    def _reset_deactivation_timer(self):
+        """Reset the auto-deactivation timer"""
+        if self.deactivation_timer:
+            self.deactivation_timer.cancel()
+        
+        self.deactivation_timer = threading.Timer(
+            self.inactive_timeout, 
+            self._auto_deactivate
+        )
+        self.deactivation_timer.start()
+    
+    def _auto_deactivate(self):
+        """Auto-deactivate Jarvis after inactivity timeout"""
+        logger.info(f"⏰ Auto-deactivating after {self.inactive_timeout}s of inactivity")
+        self._deactivate_jarvis()
+    
     def on_wake_word_detected(self):
         """Handle wake word detection with enhanced state management"""
         current_time = time.time()
@@ -103,22 +136,18 @@ class EnhancedJarvisAssistant:
             return
         
         logger.info("🚨 Wake word detected!")
-        self.is_active = True
-        self.last_speech_time = current_time
+        self._activate_jarvis()
         
         # Use enhanced speaking method
         self.speak_with_feedback_control("Yes, sir. How may I assist you?")
     
     def on_speech_received(self, text):
-        """Enhanced speech handling with better filtering and state management"""
+        """Enhanced speech handling with wake word activation required"""
         current_time = time.time()
-        
-        logger.info(f"📝 Speech received: '{text}'")
         
         # Enhanced filtering
         text_clean = text.strip()
         if not text_clean or len(text_clean) < 2:
-            logger.debug(f"Ignoring very short transcription: '{text_clean}'")
             return
         
         # Filter out common false positives during TTS
@@ -129,12 +158,10 @@ class EnhancedJarvisAssistant:
         # Additional filtering for post-TTS audio artifacts
         false_positives = ["thank you", "you", "mm-hmm", "hmm", "uh", "um", "ah", "oh"]
         if text_clean.lower() in false_positives:
-            logger.debug(f"Filtering false positive: '{text_clean}'")
             return
         
         # Prevent processing speech too quickly after last response
         if current_time - self.last_speech_time < self.speech_cooldown:
-            logger.debug("Speech ignored due to cooldown")
             return
         
         text_lower = text_clean.lower()
@@ -142,19 +169,19 @@ class EnhancedJarvisAssistant:
         
         # Enhanced wake word detection
         contains_wake_word = any(wake_word in text_lower for wake_word in wake_words)
-        is_pure_wake_word = any(text_lower == wake_word for wake_word in wake_words)
         
         # Handle wake word activation
         if contains_wake_word and not self.is_active:
-            logger.info("🚨 Wake word detected in speech - activating!")
-            self.is_active = True
-            self.last_speech_time = current_time
+            logger.info(f"🚨 Wake word detected: '{text_clean}' - activating!")
+            self._activate_jarvis()
             self.speak_with_feedback_control("Yes, sir. How may I assist you?")
             return
         
         # Process commands only if active
         if self.is_active:
+            logger.info(f"📝 Processing command: '{text_clean}'")
             self.last_speech_time = current_time
+            self._reset_deactivation_timer()  # Reset timer on activity
             
             # Process command in a separate thread to avoid blocking audio
             threading.Thread(
@@ -163,7 +190,9 @@ class EnhancedJarvisAssistant:
                 daemon=True
             ).start()
         else:
-            logger.debug("Jarvis is not active - say 'Jarvis' to activate")
+            # Don't log ambient conversation when inactive
+            logger.debug(f"Ambient speech ignored (inactive): '{text_clean[:20]}...'")
+            return
     
     def _process_command_async(self, text):
         """Process commands asynchronously to avoid blocking audio"""
@@ -315,6 +344,11 @@ class EnhancedJarvisAssistant:
         self.is_active = False
         
         try:
+            # Cancel deactivation timer
+            if self.deactivation_timer:
+                self.deactivation_timer.cancel()
+                self.deactivation_timer = None
+            
             # Stop STT
             self.stt.stop_listening()
             

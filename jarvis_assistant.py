@@ -8,6 +8,8 @@ Key improvements:
 4. Recovery mechanisms for stuck states
 """
 
+__version__ = "1.3.0"
+
 import time
 import datetime
 import threading
@@ -395,6 +397,7 @@ def main():
                        default='piper', help='TTS engine to use (default: piper)')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug logging')
+    parser.add_argument('--version', action='version', version=f'Jarvis Voice Assistant v{__version__}')
     
     args = parser.parse_args()
     
@@ -436,7 +439,8 @@ def main():
     # Determine local LLM setting
     enable_local_llm = not args.disable_local_llm
     
-    # Display settings
+    # Display version and settings
+    print(f"🤖 Jarvis Voice Assistant v{__version__}")
     if prevent_feedback:
         print("🔇 Feedback prevention: ENABLED")
     if performance_mode:

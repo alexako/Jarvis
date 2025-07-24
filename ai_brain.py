@@ -307,17 +307,107 @@ class DeepSeekBrain(BaseBrain):
             return False
 
 class LocalBrain(BaseBrain):
-    """Local model brain (placeholder for future implementation)"""
+    """Local Ollama-powered brain for private, offline AI responses"""
     
-    def __init__(self, model_path: Optional[str] = None):
-        super().__init__("Local Model")
-        logger.info("Local brain placeholder - not implemented yet")
+    def __init__(self, model_name: str = "llama3.2:latest"):
+        super().__init__("Local Llama")
+        self.model_name = model_name
+        self.base_url = "http://localhost:11434"
+        
+        # Test Ollama connection
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["ollama", "list"], 
+                capture_output=True, 
+                text=True, 
+                timeout=5
+            )
+            
+            if result.returncode == 0 and model_name in result.stdout:
+                self.available = True
+                logger.info(f"Local brain initialized with {model_name}")
+            else:
+                logger.warning(f"Model {model_name} not found in Ollama")
+                self.available = False
+                
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            logger.error(f"Ollama not available: {e}")
+            self.available = False
+        except Exception as e:
+            logger.error(f"Failed to initialize local brain: {e}")
+            self.available = False
     
     def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
-        return "Local processing not yet implemented, sir."
+        """Process request using local Ollama model"""
+        if not self.available:
+            return "Local AI is not available, sir."
+        
+        try:
+            import subprocess
+            import json
+            
+            # Create Jarvis personality prompt
+            system_prompt = """You are Jarvis, an AI assistant with a formal, helpful personality. 
+Address the user as 'sir' and maintain a professional, respectful tone. 
+Keep responses concise but informative. You are knowledgeable but acknowledge when you don't have current information."""
+            
+            # Combine system prompt with user input
+            full_prompt = f"{system_prompt}\n\nUser: {user_input}\nJarvis:"
+            
+            # Call Ollama via subprocess for reliability
+            result = subprocess.run(
+                ["ollama", "run", self.model_name, full_prompt],
+                capture_output=True,
+                text=True,
+                timeout=30  # 30 second timeout
+            )
+            
+            if result.returncode == 0:
+                response = result.stdout.strip()
+                
+                # Clean up the response
+                if response:
+                    # Remove any unwanted prefixes or suffixes
+                    response = response.replace("Jarvis:", "").strip()
+                    
+                    # Add conversation to history
+                    self.conversation_history.append({
+                        "user": user_input,
+                        "assistant": response
+                    })
+                    
+                    # Keep history manageable
+                    if len(self.conversation_history) > self.max_history:
+                        self.conversation_history = self.conversation_history[-self.max_history:]
+                    
+                    return response
+                else:
+                    return "I'm sorry sir, I couldn't generate a proper response."
+            else:
+                logger.error(f"Ollama error: {result.stderr}")
+                return "I encountered an error processing your request, sir."
+                
+        except subprocess.TimeoutExpired:
+            logger.warning("Local AI request timed out")
+            return "I'm sorry sir, that request is taking too long to process."
+        except Exception as e:
+            logger.error(f"Local brain processing error: {e}")
+            return "I encountered an error processing your request, sir."
     
     def is_healthy(self) -> bool:
-        return False
+        """Check if Ollama is running and responsive"""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["ollama", "run", self.model_name, "Hello"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            return result.returncode == 0
+        except:
+            return False
 
 class AIBrainManager:
     """Main AI brain manager with provider orchestration"""

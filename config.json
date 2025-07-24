@@ -89,5 +89,13 @@
     "timeout_buffer_factor": 0.5,
     "min_timeout_seconds": 30,
     "max_timeout_seconds": 300
+  },
+  "local_llm": {
+    "enabled": true,
+    "model": "llama3.2:latest",
+    "timeout": 30,
+    "max_context_length": 4096,
+    "temperature": 0.7,
+    "ollama_url": "http://localhost:11434"
   }
 }

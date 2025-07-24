@@ -439,25 +439,39 @@ def create_ai_config(
     anthropic_model: str = "claude-3-haiku-20240307",
     deepseek_enabled: bool = True,
     deepseek_model: str = "deepseek-chat",
-    prefer_anthropic: bool = True
+    local_enabled: bool = True,
+    local_model: str = "llama3.2:latest",
+    prefer_anthropic: bool = True,
+    prefer_local: bool = False
 ) -> Dict[str, Any]:
     """Create AI configuration for the commands module"""
+    
+    # Determine priorities based on preferences
+    if prefer_local:
+        local_priority = 1
+        primary_priority = 2
+        secondary_priority = 3
+    else:
+        local_priority = 3
+        primary_priority = 1 if prefer_anthropic else 2
+        secondary_priority = 2 if prefer_anthropic else 1
     
     return {
         "providers": {
             "anthropic": {
                 "enabled": anthropic_enabled,
                 "model": anthropic_model,
-                "priority": 1 if prefer_anthropic else 2
+                "priority": primary_priority if prefer_anthropic else secondary_priority
             },
             "deepseek": {
                 "enabled": deepseek_enabled,
                 "model": deepseek_model,
-                "priority": 2 if prefer_anthropic else 1
+                "priority": secondary_priority if prefer_anthropic else primary_priority
             },
             "local": {
-                "enabled": False,
-                "priority": 3
+                "enabled": local_enabled,
+                "model": local_model,
+                "priority": local_priority
             }
         },
         "fallback_enabled": True,

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class EnhancedJarvisAssistant:
     """Enhanced Jarvis Voice Assistant with improved responsiveness"""
 
-    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic", enable_local_llm=True):
+    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic", enable_local_llm=True, tts_engine="piper"):
         self.performance_mode = performance_mode
         
         # Use enhanced STT
@@ -34,7 +34,7 @@ class EnhancedJarvisAssistant:
             debug=True  # Enable debug for better monitoring
         )
         
-        self.tts = JarvisTTS(tts_engine="system")
+        self.tts = JarvisTTS(tts_engine=tts_engine)
         self.is_active = False
         self.is_listening = False
         self.ai_enabled = ai_enabled
@@ -391,6 +391,8 @@ def main():
                        help='Use local Llama as primary AI provider (private, offline)')
     parser.add_argument('--disable-local-llm', action='store_true',
                        help='Disable local LLM support entirely')
+    parser.add_argument('--tts-engine', choices=['piper', 'pyttsx3', 'coqui', 'system'], 
+                       default='piper', help='TTS engine to use (default: piper)')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug logging')
     
@@ -439,6 +441,9 @@ def main():
         print("🔇 Feedback prevention: ENABLED")
     if performance_mode:
         print(f"⚡ Performance mode: {performance_mode}")
+    if args.tts_engine != "system":
+        engine_names = {"piper": "Piper Neural TTS", "pyttsx3": "pyttsx3", "coqui": "Coqui TTS"}
+        print(f"🎙️  TTS Engine: {engine_names.get(args.tts_engine, args.tts_engine)}")
     
     # Display AI settings
     if args.enable_ai or ai_provider_preference == "local":
@@ -461,7 +466,8 @@ def main():
         ai_enabled=ai_enabled,
         performance_mode=performance_mode,
         ai_provider_preference=ai_provider_preference,
-        enable_local_llm=enable_local_llm
+        enable_local_llm=enable_local_llm,
+        tts_engine=args.tts_engine
     )
     
     assistant.start()

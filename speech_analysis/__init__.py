@@ -6,7 +6,7 @@ pyttsx3, and Coqui TTS engines, along with wake word detection and voice activit
 """
 
 from .stt import JarvisSTT, WhisperSTT, VoskSTT, AudioConfig, AudioBuffer, WakeWordDetector, EnhancedJarvisSTT
-from .tts import JarvisTTS, PyttsxTTS, CoquiTTS, TTSConfig, JarvisPersonality, AudioPlayer
+from .tts import JarvisTTS, PyttsxTTS, PiperTTS, CoquiTTS, TTSConfig, JarvisPersonality, AudioPlayer
 
 __all__ = [
     'JarvisSTT',
@@ -18,6 +18,7 @@ __all__ = [
     'EnhancedJarvisSTT',
     'JarvisTTS',
     'PyttsxTTS',
+    'PiperTTS',
     'CoquiTTS',
     'TTSConfig',
     'JarvisPersonality',

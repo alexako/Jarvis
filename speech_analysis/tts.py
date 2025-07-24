@@ -197,6 +197,128 @@ class PyttsxTTS:
             logger.error(f"Direct speech failed: {e}")
 
 
+class PiperTTS:
+    """Piper TTS - High-quality neural TTS with natural voices"""
+    
+    def __init__(self, config: TTSConfig, model_path: str = None):
+        self.config = config
+        self.model_path = model_path or os.path.expanduser("~/.local/share/piper/models/en_GB-alan-medium.onnx")
+        self.config_path = self.model_path + ".json"
+        
+        # Check if Piper and model are available
+        try:
+            import subprocess
+            result = subprocess.run(["piper", "--help"], capture_output=True, timeout=5)
+            if result.returncode == 0 and os.path.exists(self.model_path):
+                self.available = True
+                logger.info(f"Piper TTS initialized with model: {os.path.basename(self.model_path)}")
+            else:
+                logger.warning(f"Piper model not found: {self.model_path}")
+                self.available = False
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            logger.error(f"Piper not available: {e}")
+            self.available = False
+        except Exception as e:
+            logger.error(f"Failed to initialize Piper TTS: {e}")
+            self.available = False
+    
+    def synthesize(self, text: str) -> bytes:
+        """Synthesize text using Piper TTS"""
+        if not self.available:
+            logger.error("Piper TTS not available")
+            return b""
+        
+        try:
+            import subprocess
+            import tempfile
+            
+            # Create temporary file for output
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+            
+            # Run Piper TTS
+            cmd = [
+                "piper",
+                "-m", self.model_path,
+                "-f", tmp_path,
+                "--sentence-silence", "0.3",  # Slight pause between sentences
+                "--volume", "1.0"
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                input=text,
+                text=True,
+                capture_output=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0 and os.path.exists(tmp_path):
+                # Read audio data
+                with open(tmp_path, 'rb') as f:
+                    audio_data = f.read()
+                
+                # Cleanup
+                os.unlink(tmp_path)
+                
+                return audio_data
+            else:
+                logger.error(f"Piper synthesis failed: {result.stderr}")
+                return b""
+                
+        except subprocess.TimeoutExpired:
+            logger.warning("Piper synthesis timed out")
+            return b""
+        except Exception as e:
+            logger.error(f"Piper synthesis error: {e}")
+            return b""
+    
+    def speak_direct(self, text: str):
+        """Direct speech using Piper (for fallback)"""
+        try:
+            import subprocess
+            import tempfile
+            
+            # Create temporary file for output
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+            
+            # Run Piper TTS to generate WAV file
+            cmd = [
+                "piper",
+                "-m", self.model_path,
+                "-f", tmp_path,
+                "--sentence-silence", "0.3",
+                "--volume", "1.0"
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                input=text,
+                text=True,
+                capture_output=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0 and os.path.exists(tmp_path):
+                # Play using system player
+                if sys.platform == "darwin":  # macOS
+                    subprocess.run(["afplay", tmp_path], check=True)
+                elif sys.platform == "linux":
+                    subprocess.run(["aplay", tmp_path], check=True)
+                elif sys.platform == "win32":
+                    import winsound
+                    winsound.PlaySound(tmp_path, winsound.SND_FILENAME)
+                
+                # Cleanup
+                os.unlink(tmp_path)
+            else:
+                logger.error(f"Piper TTS failed: {result.stderr}")
+                
+        except Exception as e:
+            logger.error(f"Piper direct speech failed: {e}")
+
+
 class CoquiTTS:
     """Coqui TTS - The voice cloning champion"""
 
@@ -352,6 +474,10 @@ class JarvisTTS:
         # Initialize TTS engine
         if tts_engine.lower() == "pyttsx3":
             self.tts_engine = PyttsxTTS(self.config)
+        elif tts_engine.lower() == "piper":
+            # For Piper, use model_name as model_path if it looks like a path, otherwise use default
+            piper_model_path = model_name if model_name.endswith('.onnx') else None
+            self.tts_engine = PiperTTS(self.config, piper_model_path)
         elif tts_engine.lower() == "coqui":
             self.tts_engine = CoquiTTS(self.config, model_name)
         elif tts_engine.lower() == "system":
@@ -476,6 +602,13 @@ class JarvisTTS:
                 self.tts_engine.speak_directly(text)
             except Exception as e:
                 logger.warning(f"pyttsx3 failed, using system say: {e}")
+                self._fallback_system_say(text)
+        elif isinstance(self.tts_engine, PiperTTS):
+            # Try Piper TTS
+            try:
+                self.tts_engine.speak_direct(text)
+            except Exception as e:
+                logger.warning(f"Piper TTS failed, using system say: {e}")
                 self._fallback_system_say(text)
         else:
             self.speak(text, use_personality=False)

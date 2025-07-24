@@ -18,6 +18,13 @@ python jarvis_assistant.py --enable-ai --use-anthropic  # default
 
 # Use local AI only (private, offline, no API keys required)
 python jarvis_assistant.py --use-local
+
+# Use enhanced neural TTS for natural voice
+python jarvis_assistant.py --tts-engine piper
+
+# Use different TTS engines
+python jarvis_assistant.py --tts-engine pyttsx3
+python jarvis_assistant.py --tts-engine system
 ```
 
 ### Demo Mode
@@ -49,10 +56,12 @@ python quick_test.py
 - **Real-time Processing**: Continuous listening with callback-based processing
 
 ### 🔊 Text-to-Speech (TTS)
-- **pyttsx3 Engine**: Reliable cross-platform TTS
-- **British Voice**: Uses Daniel voice for authentic Jarvis experience
+- **Piper Neural TTS**: High-quality neural TTS with natural British voice (default)
+- **pyttsx3 Engine**: Reliable cross-platform TTS fallback
+- **Coqui TTS**: Advanced neural TTS with voice cloning capabilities
+- **System TTS**: Native OS text-to-speech (macOS `say` command)
+- **British Voice**: Authentic British accent for Jarvis personality
 - **Personality Enhancement**: Adds formal "sir" addressing and contextual responses
-- **Direct Speech**: Optimized for immediate audio output
 
 ### 🤖 AI Provider Support
 - **Triple AI Integration**: Support for DeepSeek, Anthropic Claude, and Local Llama
@@ -68,6 +77,7 @@ python quick_test.py
 --use-deepseek          # Use DeepSeek as primary provider
 --use-local             # Use local Llama 3.2 as primary (private, offline)
 --disable-local-llm     # Disable local LLM support entirely
+--tts-engine ENGINE     # TTS engine: piper (default), pyttsx3, coqui, system
 ```
 
 ### 🎯 Command System (54 Commands)
@@ -185,6 +195,21 @@ ollama pull llama3.2:latest
 
 # Verify installation
 ollama run llama3.2:latest "Hello"
+```
+
+### Enhanced TTS Setup (Optional - for natural voice)
+```bash
+# Install Piper TTS (if not already installed)
+pip install piper-tts
+
+# Download British voice model (auto-downloaded on first use)
+mkdir -p ~/.local/share/piper/models
+cd ~/.local/share/piper/models
+wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json
+
+# Test Piper voice
+echo "Good afternoon, sir." | piper -m ~/.local/share/piper/models/en_GB-alan-medium.onnx -f test.wav && afplay test.wav
 ```
 
 ## 🎯 Usage Examples

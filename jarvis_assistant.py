@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class EnhancedJarvisAssistant:
     """Enhanced Jarvis Voice Assistant with improved responsiveness"""
 
-    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic"):
+    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic", enable_local_llm=True):
         self.performance_mode = performance_mode
         
         # Use enhanced STT
@@ -51,10 +51,14 @@ class EnhancedJarvisAssistant:
         
         # Create AI configuration
         prefer_anthropic = (ai_provider_preference == "anthropic")
+        prefer_local = (ai_provider_preference == "local")
+        
         ai_config = create_ai_config(
             anthropic_enabled=self.ai_enabled,
             deepseek_enabled=self.ai_enabled,
-            prefer_anthropic=prefer_anthropic
+            local_enabled=enable_local_llm,
+            prefer_anthropic=prefer_anthropic,
+            prefer_local=prefer_local
         )
         
         # Initialize centralized command system
@@ -383,6 +387,10 @@ def main():
                        help='Use Anthropic Claude as primary AI provider (default)')
     parser.add_argument('--use-deepseek', action='store_true',
                        help='Use DeepSeek as primary AI provider')
+    parser.add_argument('--use-local', action='store_true',
+                       help='Use local Llama as primary AI provider (private, offline)')
+    parser.add_argument('--disable-local-llm', action='store_true',
+                       help='Disable local LLM support entirely')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug logging')
     
@@ -408,11 +416,13 @@ def main():
     
     # Determine AI provider preference
     ai_provider_preference = "anthropic"  # default
-    provider_count = sum([args.use_anthropic, args.use_deepseek])
+    provider_count = sum([args.use_anthropic, args.use_deepseek, args.use_local])
     
     if provider_count > 1:
         print("Error: Only one AI provider can be specified as primary")
         sys.exit(1)
+    elif args.use_local:
+        ai_provider_preference = "local"
     elif args.use_deepseek:
         ai_provider_preference = "deepseek"
     elif args.use_anthropic:
@@ -421,22 +431,37 @@ def main():
     # Determine feedback prevention setting
     prevent_feedback = args.prevent_feedback and not args.no_feedback_prevention
     
+    # Determine local LLM setting
+    enable_local_llm = not args.disable_local_llm
+    
     # Display settings
     if prevent_feedback:
         print("🔇 Feedback prevention: ENABLED")
     if performance_mode:
         print(f"⚡ Performance mode: {performance_mode}")
-    if args.enable_ai:
-        primary_provider = "Claude" if ai_provider_preference == "anthropic" else "DeepSeek"
-        fallback_provider = "DeepSeek" if ai_provider_preference == "anthropic" else "Claude"
-        print(f"🤖 AI features enabled - Primary: {primary_provider}, Fallback: {fallback_provider}")
+    
+    # Display AI settings
+    if args.enable_ai or ai_provider_preference == "local":
+        if ai_provider_preference == "local":
+            print("🏠 Local AI enabled - Private offline processing with Llama 3.2")
+        else:
+            primary_provider = "Claude" if ai_provider_preference == "anthropic" else "DeepSeek"
+            fallback_provider = "DeepSeek" if ai_provider_preference == "anthropic" else "Claude"
+            print(f"🤖 AI features enabled - Primary: {primary_provider}, Fallback: {fallback_provider}")
+    
+    if enable_local_llm and ai_provider_preference != "local":
+        print("🏠 Local LLM available as fallback")
     
     # Create and start enhanced assistant
+    # For local-only mode, don't require --enable-ai flag
+    ai_enabled = args.enable_ai or (ai_provider_preference == "local")
+    
     assistant = EnhancedJarvisAssistant(
         prevent_feedback=prevent_feedback,
-        ai_enabled=args.enable_ai,
+        ai_enabled=ai_enabled,
         performance_mode=performance_mode,
-        ai_provider_preference=ai_provider_preference
+        ai_provider_preference=ai_provider_preference,
+        enable_local_llm=enable_local_llm
     )
     
     assistant.start()

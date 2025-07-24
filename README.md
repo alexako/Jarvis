@@ -15,6 +15,9 @@ python jarvis_assistant.py --enable-ai
 # Use specific AI provider
 python jarvis_assistant.py --enable-ai --use-deepseek
 python jarvis_assistant.py --enable-ai --use-anthropic  # default
+
+# Use local AI only (private, offline, no API keys required)
+python jarvis_assistant.py --use-local
 ```
 
 ### Demo Mode
@@ -52,16 +55,19 @@ python quick_test.py
 - **Direct Speech**: Optimized for immediate audio output
 
 ### 🤖 AI Provider Support
-- **Dual AI Integration**: Support for both DeepSeek and Anthropic Claude
+- **Triple AI Integration**: Support for DeepSeek, Anthropic Claude, and Local Llama
 - **Provider Selection**: Choose primary AI provider via command line flags
 - **Fallback System**: Automatic fallback between providers for reliability
 - **Smart Prioritization**: Configure primary and secondary AI providers
+- **Local AI**: Private, offline processing with Llama 3.2 (no API keys required)
 
 #### AI Provider Flags
 ```bash
---enable-ai              # Enable AI features
+--enable-ai              # Enable cloud AI features (Claude/DeepSeek)
 --use-anthropic          # Use Anthropic Claude as primary (default)
 --use-deepseek          # Use DeepSeek as primary provider
+--use-local             # Use local Llama 3.2 as primary (private, offline)
+--disable-local-llm     # Disable local LLM support entirely
 ```
 
 ### 🎯 Command System (54 Commands)
@@ -160,13 +166,25 @@ Key packages:
 - `anthropic` - Anthropic Claude API (optional)
 - `openai` - DeepSeek API (optional)
 
-### API Keys (Optional - for AI features)
+### API Keys (Optional - for cloud AI features)
 ```bash
 # For Anthropic Claude
 export ANTHROPIC_API_KEY="your-anthropic-api-key"
 
 # For DeepSeek
 export DEEPSEEK_API_KEY="your-deepseek-api-key"
+```
+
+### Local AI Setup (Optional - for offline AI features)
+```bash
+# Install Ollama (macOS/Linux)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull Llama 3.2 model
+ollama pull llama3.2:latest
+
+# Verify installation
+ollama run llama3.2:latest "Hello"
 ```
 
 ## 🎯 Usage Examples

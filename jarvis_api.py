@@ -11,7 +11,7 @@ Features:
 - Extensible for future video stream integration
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 import asyncio
 import logging
@@ -33,6 +33,7 @@ import uvicorn
 from ai_brain import AIBrainManager, BrainProvider
 from speech_analysis.tts import JarvisTTS
 from commands import JarvisCommands, create_ai_config
+from jarvis_context import create_jarvis_context
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 jarvis_brain: Optional[AIBrainManager] = None
 jarvis_tts: Optional[JarvisTTS] = None
 jarvis_commands: Optional[JarvisCommands] = None
+jarvis_context = None
 
 # API Models
 class TextRequest(BaseModel):
@@ -50,6 +52,7 @@ class TextRequest(BaseModel):
     use_tts: bool = Field(default=False, description="Whether to generate audio response")
     ai_provider: Optional[str] = Field(default=None, description="Preferred AI provider (local, anthropic, deepseek)")
     context: Optional[Dict[str, Any]] = Field(default=None, description="Additional context for the request")
+    user: Optional[str] = Field(default=None, description="User identifier for multi-user context (optional)")
 
 class TextResponse(BaseModel):
     """Response model for text interaction"""
@@ -58,6 +61,7 @@ class TextResponse(BaseModel):
     processing_time: float = Field(..., description="Time taken to process request in seconds")
     audio_url: Optional[str] = Field(default=None, description="URL to generated audio file if TTS was requested")
     request_id: str = Field(..., description="Unique identifier for this request")
+    current_user: Optional[str] = Field(default=None, description="Current active user in context system")
 
 class StatusResponse(BaseModel):
     """System status response"""
@@ -155,7 +159,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 async def initialize_jarvis():
     """Initialize Jarvis components"""
-    global jarvis_brain, jarvis_tts, jarvis_commands
+    global jarvis_brain, jarvis_tts, jarvis_commands, jarvis_context
     
     try:
         # Initialize AI brain with all providers
@@ -171,11 +175,19 @@ async def initialize_jarvis():
         # Initialize TTS with Piper neural voice
         jarvis_tts = JarvisTTS(tts_engine="piper")
         
-        # Initialize commands system  
-        jarvis_commands = JarvisCommands(jarvis_tts, None, ai_config)
+        # Initialize context/memory system - SHARED with voice assistant
+        jarvis_context = create_jarvis_context(
+            db_path="jarvis_memory.db",  # Same database as voice assistant
+            max_session_history=20,
+            default_user="user"  # Same default as voice assistant
+        )
+        
+        # Initialize commands system with context support
+        jarvis_commands = JarvisCommands(jarvis_tts, None, ai_config, jarvis_context)
         
         logger.info("🧠 AI Brain initialized with providers: %s", list(jarvis_brain.brains.keys()))
         logger.info("🎙️ TTS engine initialized")
+        logger.info("💾 Context system initialized for API")  
         logger.info("⚙️ Command system initialized")
         
     except Exception as e:
@@ -184,16 +196,57 @@ async def initialize_jarvis():
 
 async def cleanup_jarvis():
     """Cleanup Jarvis components"""
-    global jarvis_brain, jarvis_tts, jarvis_commands
+    global jarvis_brain, jarvis_tts, jarvis_commands, jarvis_context
     
     # Clean up resources
     jarvis_brain = None
     jarvis_tts = None
     jarvis_commands = None
+    jarvis_context = None
 
 def generate_request_id() -> str:
     """Generate unique request ID"""
     return str(uuid.uuid4())
+
+def process_jarvis_command(text: str) -> str:
+    """Process command through Jarvis commands system (synchronous wrapper)"""
+    if not jarvis_commands:
+        return "Jarvis command system not available"
+    
+    # This is a simplified version - in a real implementation you'd want to capture
+    # the actual response from the commands system
+    try:
+        # Use a mock TTS that captures responses instead of speaking
+        class ResponseCapture:
+            def __init__(self):
+                self.responses = []
+            
+            def speak_direct(self, text):
+                self.responses.append(text)
+            
+            def speak_with_feedback_control(self, text):
+                self.responses.append(text)
+        
+        # Temporarily replace TTS to capture responses
+        original_tts = jarvis_commands.tts
+        response_capture = ResponseCapture()
+        jarvis_commands.tts = response_capture
+        
+        # Process the command
+        jarvis_commands.process_command(text)
+        
+        # Restore original TTS
+        jarvis_commands.tts = original_tts
+        
+        # Return captured response or default
+        if response_capture.responses:
+            return response_capture.responses[-1]  # Return last response
+        else:
+            return "Command processed successfully"
+            
+    except Exception as e:
+        logger.error(f"Error in process_jarvis_command: {e}")
+        return f"Error processing command: {str(e)}"
 
 # API Endpoints
 
@@ -268,48 +321,43 @@ async def chat_with_jarvis(
     background_tasks: BackgroundTasks,
     current_user: Optional[Dict] = Depends(get_current_user)
 ):
-    """Chat with Jarvis via text"""
+    """Chat with Jarvis via text with multi-user context support"""
     request_id = generate_request_id()
     start_time = time.time()
     
     try:
-        if not jarvis_brain:
+        if not jarvis_commands or not jarvis_context:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Jarvis AI brain not available"
+                detail="Jarvis command system or context not available"
             )
+        
+        # Handle user switching if specified
+        if request.user:
+            # Switch to specified user
+            user_switched = jarvis_context.switch_user(request.user)
+            if not user_switched:
+                logger.warning(f"Failed to switch to user: {request.user}")
         
         # Store request for tracking
         active_requests[request_id] = {
             "start_time": start_time,
             "text": request.text,
-            "user": current_user.get("user") if current_user else "anonymous"
+            "user": current_user.get("user") if current_user else "anonymous",
+            "jarvis_user": jarvis_context.current_user_id
         }
         
-        # Process through AI brain
-        if request.ai_provider:
-            # Try specific provider if requested
-            provider_enum = BrainProvider(request.ai_provider)
-            if provider_enum in jarvis_brain.brains:
-                brain = jarvis_brain.brains[provider_enum]
-                if brain.is_healthy():
-                    response = brain.process_request(request.text, request.context or {})
-                    provider_used = brain.provider_name
-                else:
-                    # Fall back to primary brain
-                    response = jarvis_brain.process_request(request.text, request.context or {})
-                    provider_used = jarvis_brain.primary_brain.provider_name if jarvis_brain.primary_brain else "none"
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unknown AI provider: {request.ai_provider}"
-                )
-        else:
-            # Use default provider priority
-            response = jarvis_brain.process_request(request.text, request.context or {})
-            provider_used = jarvis_brain.primary_brain.provider_name if jarvis_brain.primary_brain else "none"
+        # Process through Jarvis commands system (includes AI fallback and context)
+        response = await asyncio.get_event_loop().run_in_executor(
+            None, process_jarvis_command, request.text
+        )
         
         processing_time = time.time() - start_time
+        
+        # Determine which provider was used (simplified for commands system)
+        provider_used = "jarvis_commands"
+        if jarvis_commands.ai_enabled and jarvis_commands.ai_brain:
+            provider_used = jarvis_commands.ai_brain.primary_brain.provider_name if jarvis_commands.ai_brain.primary_brain else "unknown"
         
         # Generate audio if requested
         audio_url = None
@@ -317,6 +365,9 @@ async def chat_with_jarvis(
             audio_filename = f"response_{request_id}.wav"
             background_tasks.add_task(generate_audio_response, response, audio_filename)
             audio_url = f"/audio/{audio_filename}"
+        
+        # Get current user info
+        current_jarvis_user = jarvis_context.get_current_user()
         
         # Clean up request tracking
         active_requests.pop(request_id, None)
@@ -326,7 +377,8 @@ async def chat_with_jarvis(
             provider_used=provider_used,
             processing_time=processing_time,
             audio_url=audio_url,
-            request_id=request_id
+            request_id=request_id,
+            current_user=current_jarvis_user['display_name']
         )
         
     except HTTPException:
@@ -376,6 +428,67 @@ async def get_ai_providers():
         }
     
     return providers
+
+@app.get("/users", response_model=Dict[str, Any])
+async def get_users():
+    """Get information about users in the system"""
+    if not jarvis_context:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Context system not available"
+        )
+    
+    users = jarvis_context.list_users()
+    current_user = jarvis_context.get_current_user()
+    
+    return {
+        "current_user": current_user,
+        "users": users,
+        "total_users": len(users)
+    }
+
+@app.post("/users/switch")
+async def switch_user(user_identifier: str):
+    """Switch to a different user"""
+    if not jarvis_context:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Context system not available"
+        )
+    
+    success = jarvis_context.switch_user(user_identifier)
+    if success:
+        current_user = jarvis_context.get_current_user()
+        return {
+            "success": True,
+            "message": f"Switched to user {current_user['display_name']}",
+            "current_user": current_user
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to switch to user: {user_identifier}"
+        )
+
+@app.get("/users/current", response_model=Dict[str, Any])
+async def get_current_user_info():
+    """Get current user information and aliases"""
+    if not jarvis_context:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Context system not available"
+        )
+    
+    current_user = jarvis_context.get_current_user()
+    aliases = jarvis_context.get_user_aliases()
+    recent_context = jarvis_context.get_recent_context(5)
+    
+    return {
+        "user": current_user,
+        "aliases": aliases,
+        "recent_exchanges": len(recent_context),
+        "preferences": jarvis_context.session_preferences
+    }
 
 @app.post("/video/analyze", response_model=VideoAnalysisResponse)
 async def analyze_video(

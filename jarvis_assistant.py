@@ -8,7 +8,7 @@ Key improvements:
 4. Recovery mechanisms for stuck states
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 import time
 import datetime
@@ -17,6 +17,7 @@ import logging
 from speech_analysis import EnhancedJarvisSTT
 from speech_analysis.tts import JarvisTTS
 from commands import JarvisCommands, create_ai_config
+from jarvis_context import create_jarvis_context
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -63,8 +64,15 @@ class EnhancedJarvisAssistant:
             prefer_local=prefer_local
         )
         
+        # Initialize context/memory system with multi-user support
+        self.context = create_jarvis_context(
+            db_path="jarvis_memory.db",
+            max_session_history=20,
+            default_user="user"  # Default user for multi-user system
+        )
+        
         # Initialize centralized command system
-        self.commands = JarvisCommands(self.tts, self, ai_config)
+        self.commands = JarvisCommands(self.tts, self, ai_config, self.context)
         
         # Set up STT callbacks
         self.stt.set_speech_callback(self.on_speech_received)
@@ -189,10 +197,13 @@ class EnhancedJarvisAssistant:
             self.last_speech_time = current_time
             self._reset_deactivation_timer()  # Reset timer on activity
             
+            # Handle contextual references and pronouns
+            enhanced_text = self.context.handle_pronouns_and_references(text_clean)
+            
             # Process command in a separate thread to avoid blocking audio
             threading.Thread(
                 target=self._process_command_async, 
-                args=(text_clean,), 
+                args=(enhanced_text,), 
                 daemon=True
             ).start()
         else:
@@ -263,6 +274,10 @@ class EnhancedJarvisAssistant:
         print("   • Help: 'help', 'what can you do', 'commands'")
         print("   • Control: 'stop listening', 'shutdown', 'goodbye'")
         print("   • Identity: 'who are you', 'introduce yourself'")
+        print("   • Memory: 'my name is...', 'remember that...', 'what do you know about me'")
+        print("   • Context: 'context status', 'conversation summary', 'reset memory'")
+        print("   • Users: 'I am [name]', 'who am I', 'list users', 'switch to user [name]'")
+        print("   • Aliases: 'call me also [name]', 'my aliases', 'primary name is [name]'")
         if self.ai_enabled:
             print("   • AI Features: Ask any question or request assistance")
         print("⏹️  Press Ctrl+C to stop")

@@ -31,9 +31,10 @@ logger = logging.getLogger(__name__)
 class JarvisCommands:
     """Enhanced command processor with AI brain integration"""
     
-    def __init__(self, tts, assistant, ai_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, tts, assistant, ai_config: Optional[Dict[str, Any]] = None, context=None):
         self.tts = tts
         self.assistant = assistant
+        self.context = context
         
         # Initialize AI brain manager
         self.ai_brain: Optional[AIBrainManager] = None
@@ -97,12 +98,37 @@ class JarvisCommands:
             'clear history': self._handle_clear_history,
             'disable ai': self._handle_disable_ai,
             'enable ai': self._handle_enable_ai,
+            
+            # Context/Memory commands
+            'remember that': self._handle_remember,
+            'my name is': self._handle_learn_name,
+            'call me': self._handle_learn_name,
+            'context status': self._handle_context_status,
+            'conversation summary': self._handle_conversation_summary,
+            'what do you know about me': self._handle_what_you_know,
+            'forget that': self._handle_forget,
+            'reset memory': self._handle_reset_memory,
+            
+            # Multi-user commands
+            'switch to user': self._handle_switch_user,
+            'i am': self._handle_i_am,
+            'who am i': self._handle_who_am_i,
+            'list users': self._handle_list_users,
+            'current user': self._handle_current_user,
+            'create user': self._handle_create_user,
+            
+            # Alias management commands
+            'add alias': self._handle_add_alias,
+            'call me also': self._handle_add_alias,
+            'my aliases': self._handle_list_aliases,
+            'remove alias': self._handle_remove_alias,
+            'primary name': self._handle_set_primary,
         }
         
         logger.info(f"Enhanced commands initialized - AI enabled: {self.ai_enabled}")
     
     def process_command(self, text: str):
-        """Process command with AI fallback"""
+        """Process command with context awareness and AI fallback"""
         if not text or not text.strip():
             return
         
@@ -112,15 +138,31 @@ class JarvisCommands:
         logger.info(f"Processing command: '{text_clean}'")
         
         # Check for built-in commands first (fast local processing)
+        command_matched = False
         for command, handler in self.command_mappings.items():
             if command in text_lower:
                 logger.info(f"Matched built-in command: {command}")
                 try:
-                    handler()
+                    # Some commands need the full text for context
+                    if command in ['remember that', 'my name is', 'call me', 'forget that', 
+                                  'switch to user', 'i am', 'create user', 'add alias', 
+                                  'call me also', 'remove alias', 'primary name']:
+                        handler(text_clean)
+                    else:
+                        handler()
+                    
+                    # For context tracking, we need to add the exchange after response
+                    # This is handled in the individual command handlers or _speak method
+                    command_matched = True
+                    break
                 except Exception as e:
                     logger.error(f"Built-in command failed: {e}")
-                    self._speak("I encountered an error processing that command, sir.")
-                return
+                    self._speak("I encountered an error processing that command, sir.", text_clean, "error")
+                    command_matched = True
+                    break
+        
+        if command_matched:
+            return
         
         # If no built-in command matched, try AI brain
         if self.ai_enabled and self.ai_brain and self.ai_brain.is_available():
@@ -132,13 +174,30 @@ class JarvisCommands:
             self._handle_unknown_command(text_clean)
     
     def _handle_ai_request(self, user_input: str):
-        """Handle request through AI brain"""
+        """Handle request through AI brain with context awareness"""
         try:
-            # Build context for AI
+            # Build context for AI including conversation history
             context = self._build_context()
+            
+            # Add conversation context if available
+            if self.context:
+                context_info = self.context.get_context_for_ai(include_persistent=True)
+                if context_info:
+                    context['conversation_context'] = context_info
             
             # Process through AI brain
             response = self.ai_brain.process_request(user_input, context)
+            
+            # Store the exchange in context
+            if self.context:
+                # Determine topic from user input
+                topic = self._extract_topic(user_input)
+                self.context.add_exchange(
+                    user_input=user_input,
+                    jarvis_response=response,
+                    topic=topic,
+                    context_data={'ai_processed': True, 'timestamp': datetime.datetime.now().isoformat()}
+                )
             
             # Speak the response using assistant's feedback prevention
             self._speak(response)
@@ -173,7 +232,7 @@ class JarvisCommands:
         
         return context
     
-    def _speak(self, text: str):
+    def _speak(self, text: str, user_input: str = None, topic: str = None):
         """Speak text using assistant's feedback prevention if available"""
         if self.assistant and hasattr(self.assistant, 'speak_with_feedback_control'):
             self.assistant.speak_with_feedback_control(text)
@@ -181,6 +240,15 @@ class JarvisCommands:
             self.tts.speak_direct(text)
         else:
             print(f"Jarvis: {text}")
+        
+        # Store the exchange in context if available
+        if self.context and user_input:
+            self.context.add_exchange(
+                user_input=user_input,
+                jarvis_response=text,
+                topic=topic,
+                context_data={'command_type': 'builtin', 'timestamp': datetime.datetime.now().isoformat()}
+            )
     
     # Built-in command handlers (these run locally for speed)
     def _handle_greeting(self):
@@ -423,6 +491,394 @@ class JarvisCommands:
         ]
         response = random.choice(responses)
         self._speak(response)
+    
+    # Context/Memory command handlers
+    def _handle_remember(self, text: str):
+        """Handle remember that commands"""
+        if not self.context:
+            self._speak("Memory system is not available, sir.")
+            return
+        
+        # Extract what to remember
+        if "remember that" in text.lower():
+            info = text.lower().split("remember that", 1)[1].strip()
+        else:
+            info = text.strip()
+        
+        if info:
+            # Store as a general fact
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            self.context.learn_about_user("remembered_info", f"{timestamp}: {info}")
+            self._speak(f"I'll remember that, sir: {info}")
+        else:
+            self._speak("What would you like me to remember, sir?")
+    
+    def _handle_learn_name(self, text: str):
+        """Handle name learning commands"""
+        if not self.context:
+            self._speak("Memory system is not available, sir.")
+            return
+        
+        # Extract name from various patterns
+        text_lower = text.lower()
+        name = None
+        
+        if "my name is" in text_lower:
+            name = text_lower.split("my name is", 1)[1].strip()
+        elif "call me" in text_lower:
+            name = text_lower.split("call me", 1)[1].strip()
+        
+        if name:
+            # Clean up the name
+            name = name.replace(".", "").strip()
+            self.context.learn_about_user("name", name, confidence=1.0, source="direct_instruction")
+            self._speak(f"Understood, {name}. I'll remember your name.")
+        else:
+            self._speak("I didn't catch your name, sir. Could you please repeat it?")
+    
+    def _handle_context_status(self):
+        """Handle context status command"""
+        if not self.context:
+            self._speak("Memory system is not available, sir.")
+            return
+        
+        status = self.context.get_context_status()
+        # Convert status to speech-friendly format
+        lines = status.split('\n')
+        summary = []
+        for line in lines[1:6]:  # Get first few important lines
+            if '•' in line:
+                summary.append(line.replace('•', '').strip())
+        
+        if summary:
+            status_text = "Context system status: " + ". ".join(summary)
+            self._speak(status_text)
+        else:
+            self._speak("Context system is active and functioning, sir.")
+    
+    def _handle_conversation_summary(self):
+        """Handle conversation summary command"""
+        if not self.context:
+            self._speak("Memory system is not available, sir.")
+            return
+        
+        summary = self.context.get_conversation_summary()
+        self._speak(f"Here's your conversation summary, sir: {summary}")
+    
+    def _handle_what_you_know(self):
+        """Handle what do you know about me command"""
+        if not self.context:
+            self._speak("Memory system is not available, sir.")
+            return
+        
+        info_parts = []
+        
+        # Add user name if known
+        if self.context.user_name:
+            info_parts.append(f"Your name is {self.context.user_name}")
+        
+        # Add preferences
+        prefs = self.context.session_preferences
+        if prefs:
+            pref_count = len(prefs)
+            info_parts.append(f"I have {pref_count} preferences stored")
+        
+        # Add recent topics
+        recent_context = self.context.get_recent_context(3)
+        if recent_context:
+            topics = [ctx.get('topic') for ctx in recent_context if ctx.get('topic')]
+            if topics:
+                unique_topics = list(set(topics))[:2]  # Limit to 2 topics
+                info_parts.append(f"We recently discussed {', '.join(unique_topics)}")
+        
+        if info_parts:
+            response = "Here's what I know about you, sir: " + ". ".join(info_parts) + "."
+        else:
+            response = "I don't have much personal information stored yet, sir. We can build up my knowledge of your preferences over time."
+        
+        self._speak(response)
+    
+    def _handle_forget(self, text: str):
+        """Handle forget that command - simplified version"""
+        if not self.context:
+            self._speak("Memory system is not available, sir.")
+            return
+        
+        # For now, just reset the current topic
+        self.context.current_topic = None
+        self._speak("I've cleared the current topic from my memory, sir.")
+    
+    def _handle_reset_memory(self):
+        """Handle reset memory command"""
+        if not self.context:
+            self._speak("Memory system is not available, sir.")
+            return
+        
+        self.context.reset_session()
+        self._speak("Session memory has been reset, sir. Persistent preferences and information remain intact.")
+    
+    def _extract_topic(self, text: str) -> Optional[str]:
+        """Extract topic from user input for context tracking"""
+        text_lower = text.lower()
+        
+        # Simple topic extraction based on keywords
+        topic_keywords = {
+            'weather': ['weather', 'temperature', 'rain', 'sunny', 'cloudy'],
+            'time': ['time', 'date', 'schedule', 'calendar'],
+            'music': ['music', 'song', 'play', 'playlist', 'artist'],
+            'news': ['news', 'headlines', 'current events'],
+            'programming': ['code', 'programming', 'python', 'javascript', 'debug'],
+            'system': ['system', 'battery', 'memory', 'disk', 'performance'],
+            'personal': ['remember', 'name', 'preference', 'like', 'favorite']
+        }
+        
+        for topic, keywords in topic_keywords.items():
+            if any(keyword in text_lower for keyword in keywords):
+                return topic
+        
+        # If no specific topic found, use first few words as topic
+        words = text.split()[:3]
+        if len(words) >= 2:
+            return ' '.join(words).lower()
+        
+        return None
+    
+    # Multi-user command handlers
+    def _handle_switch_user(self, text: str):
+        """Handle switch to user command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        # Extract user name from command
+        text_lower = text.lower()
+        if "switch to user" in text_lower:
+            user_name = text_lower.split("switch to user", 1)[1].strip()
+        else:
+            user_name = text_lower.strip()
+        
+        if user_name:
+            # Clean up the user name and create user_id
+            user_name = user_name.replace(".", "").strip()
+            user_id = user_name.lower().replace(" ", "_")
+            
+            if self.context.switch_user(user_id, user_name):
+                self._speak(f"Switched to user {user_name}, sir.")
+            else:
+                self._speak(f"I encountered an error switching to user {user_name}, sir.")
+        else:
+            self._speak("Please specify which user to switch to, sir.")
+    
+    def _handle_i_am(self, text: str):
+        """Handle 'I am [name]' command for user identification"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        # Extract name
+        text_lower = text.lower()
+        if "i am" in text_lower:
+            user_name = text_lower.split("i am", 1)[1].strip()
+        else:
+            user_name = text_lower.strip()
+        
+        if user_name:
+            # Clean up the user name
+            user_name = user_name.replace(".", "").strip()
+            user_id = user_name.lower().replace(" ", "_")
+            
+            # Switch to this user (creating if necessary)
+            if self.context.switch_user(user_id, user_name):
+                self._speak(f"Hello {user_name}, sir. I've switched to your profile.")
+            else:
+                self._speak(f"I encountered an error switching to your profile, sir.")
+        else:
+            self._speak("Please tell me your name, sir.")
+    
+    def _handle_who_am_i(self):
+        """Handle who am I command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        current_user = self.context.get_current_user()
+        user_name = current_user['display_name']
+        is_default = current_user['is_default']
+        
+        if is_default and user_name == "Default User":
+            self._speak("You are currently using the default user profile, sir. Say 'I am [your name]' to identify yourself.")
+        else:
+            self._speak(f"You are {user_name}, sir.")
+    
+    def _handle_current_user(self):
+        """Handle current user status command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        current_user = self.context.get_current_user()
+        user_name = current_user['display_name']
+        user_id = current_user['user_id']
+        
+        response = f"Current user: {user_name}"
+        if user_id != user_name.lower().replace(" ", "_"):
+            response += f" (ID: {user_id})"
+        
+        self._speak(response + ", sir.")
+    
+    def _handle_list_users(self):
+        """Handle list users command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        users = self.context.list_users()
+        if not users:
+            self._speak("No users found in the system, sir.")
+            return
+        
+        if len(users) == 1:
+            user = users[0]
+            current_marker = " (current)" if user['is_current'] else ""
+            self._speak(f"There is one user: {user['display_name']}{current_marker}, sir.")
+        else:
+            user_names = []
+            for user in users:
+                name = user['display_name']
+                if user['is_current']:
+                    name += " (current)"
+                user_names.append(name)
+            
+            if len(user_names) <= 3:
+                user_list = ", ".join(user_names)
+            else:
+                user_list = ", ".join(user_names[:3]) + f", and {len(user_names) - 3} others"
+            
+            self._speak(f"System users: {user_list}, sir.")
+    
+    def _handle_create_user(self, text: str):
+        """Handle create user command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        # Extract user name from command
+        text_lower = text.lower()
+        if "create user" in text_lower:
+            user_name = text_lower.split("create user", 1)[1].strip()
+        else:
+            user_name = text_lower.strip()
+            
+        if user_name:
+            # Clean up the user name
+            user_name = user_name.replace(".", "").strip()
+            user_id = user_name.lower().replace(" ", "_")
+            
+            if self.context.create_user(user_id, user_name):
+                self._speak(f"Created user {user_name}, sir.")
+            else:
+                self._speak(f"User {user_name} already exists or I encountered an error, sir.")
+        else:
+            self._speak("Please specify the name for the new user, sir.")
+    
+    # Alias management command handlers
+    def _handle_add_alias(self, text: str):
+        """Handle add alias commands"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        # Extract alias from command
+        text_lower = text.lower()
+        alias = None
+        
+        if "add alias" in text_lower:
+            alias = text_lower.split("add alias", 1)[1].strip()
+        elif "call me also" in text_lower:
+            alias = text_lower.split("call me also", 1)[1].strip()
+        
+        if alias:
+            alias = alias.replace(".", "").strip()
+            if self.context.add_user_alias(alias):
+                self._speak(f"I'll also call you {alias}, sir.")
+            else:
+                self._speak(f"I already know that name for you, sir.")
+        else:
+            self._speak("What additional name would you like me to use, sir?")
+    
+    def _handle_list_aliases(self):
+        """Handle list aliases command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        aliases = self.context.get_user_aliases()
+        current_user = self.context.get_current_user()
+        
+        names = [current_user['display_name']]  # Start with display name
+        for alias in aliases:
+            if alias['alias'] != current_user['display_name']:  # Avoid duplicates
+                names.append(alias['alias'])
+        
+        if len(names) == 1:
+            self._speak(f"I only know you as {names[0]}, sir.")
+        elif len(names) == 2:
+            self._speak(f"I know you as {names[0]} and {names[1]}, sir.")
+        else:
+            name_list = ", ".join(names[:-1]) + f", and {names[-1]}"
+            self._speak(f"I know you as {name_list}, sir.")
+    
+    def _handle_remove_alias(self, text: str):
+        """Handle remove alias command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        # Extract alias to remove
+        text_lower = text.lower()
+        if "remove alias" in text_lower:
+            alias = text_lower.split("remove alias", 1)[1].strip()
+        else:
+            alias = text_lower.strip()
+        
+        if alias:
+            alias = alias.replace(".", "").strip()
+            if self.context.remove_user_alias(alias):
+                self._speak(f"I'll no longer call you {alias}, sir.")
+            else:
+                self._speak(f"I don't have that name on record, sir.")
+        else:
+            self._speak("Which name would you like me to remove, sir?")
+    
+    def _handle_set_primary(self, text: str):
+        """Handle set primary name command"""
+        if not self.context:
+            self._speak("Multi-user system is not available, sir.")
+            return
+        
+        # Extract primary name
+        text_lower = text.lower()
+        name = None
+        
+        if "primary name" in text_lower:
+            name = text_lower.split("primary name", 1)[1].strip()
+            # Handle common phrasings
+            if name.startswith("is "):
+                name = name[3:].strip()
+        
+        if name:
+            name = name.replace(".", "").strip()
+            
+            # First add as alias if it doesn't exist
+            self.context.add_user_alias(name)
+            
+            # Then set as primary
+            if self.context.set_primary_alias(name):
+                self._speak(f"I'll primarily call you {name}, sir.")
+            else:
+                self._speak(f"I couldn't set {name} as your primary name, sir.")
+        else:
+            self._speak("What would you like your primary name to be, sir?")
     
     def get_available_commands(self) -> list:
         """Get list of available built-in commands"""

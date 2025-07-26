@@ -327,14 +327,20 @@ class JarvisContext:
                 
                 # Switch to the user
                 old_user = self.current_user_id
-                self.current_user_id = user_id
                 
-                # Clear session data and reload for new user
-                self.session_history.clear()
-                self.current_topic = None
+                # Only clear session data if actually switching to a different user
+                if user_id != old_user:
+                    self.session_history.clear()
+                    self.current_topic = None
+                    logger.info(f"Switched from user {old_user} to {user_id}")
+                    
+                self.current_user_id = user_id
                 self._load_user_data(user_id)
                 
-                logger.info(f"Switched from user {old_user} to {self.current_user_id} ({self.user_name})")
+                if user_id != old_user:
+                    logger.info(f"Context cleared for new user: {self.user_name} ({user_id})")
+                else:
+                    logger.debug(f"Staying with same user: {self.user_name} ({user_id})")
                 return True
                     
             except Exception as e:
@@ -593,7 +599,12 @@ class JarvisContext:
                 context_parts.append("Relevant background:")
                 context_parts.extend(persistent_context)
         
-        return "\n".join(context_parts)
+        context_string = "\n".join(context_parts)
+        if context_parts:
+            logger.debug(f"Generated context for AI ({len(context_parts)} parts): {context_string[:200]}...")
+        else:
+            logger.debug("No context generated for AI")
+        return context_string
     
     def _get_relevant_persistent_context(self, limit: int = 3) -> List[str]:
         """Get relevant persistent context based on current topic"""
@@ -601,13 +612,14 @@ class JarvisContext:
         
         try:
             with sqlite3.connect(self.db_path) as conn:
-                # Get recent topics
+                # Get recent topics for current user
                 cursor = conn.execute('''
                     SELECT topic_name, mention_count, context_summary
                     FROM topics 
+                    WHERE user_id = ?
                     ORDER BY last_mentioned DESC 
                     LIMIT ?
-                ''', (limit,))
+                ''', (self.current_user_id, limit))
                 
                 topics = cursor.fetchall()
                 if topics:
@@ -648,7 +660,7 @@ class JarvisContext:
                         conn.commit()
                         
                         self.user_name = value
-                        logger.info(f"Learned user's name: {value} (ID: {self.current_user_id})")
+                        logger.info(f"Learned and stored user's name: {value} (ID: {self.current_user_id})")
                     
             except Exception as e:
                 logger.error(f"Failed to learn about user: {e}")

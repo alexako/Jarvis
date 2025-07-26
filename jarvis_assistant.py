@@ -55,6 +55,7 @@ class EnhancedJarvisAssistant:
         self.response_timeout = 30.0  # Max time for a response
         self.inactive_timeout = 60.0  # Auto-deactivate after 60 seconds of inactivity
         self.deactivation_timer = None
+        self.timeout_message_sent = False  # Prevent duplicate timeout messages
         
         # Create AI configuration
         prefer_anthropic = (ai_provider_preference == "anthropic")
@@ -245,12 +246,16 @@ class EnhancedJarvisAssistant:
     def _process_command_async(self, text):
         """Process commands asynchronously to avoid blocking audio"""
         try:
+            # Reset timeout flag for new command
+            self.timeout_message_sent = False
+            
             # Set a timeout for command processing
             start_time = time.time()
             
             def timeout_handler():
-                if time.time() - start_time > self.response_timeout:
+                if time.time() - start_time > self.response_timeout and not self.timeout_message_sent:
                     logger.warning("Command processing timed out")
+                    self.timeout_message_sent = True
                     self.speak_with_feedback_control("I'm sorry sir, that request is taking too long to process.")
             
             # Start timeout timer

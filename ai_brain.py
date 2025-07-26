@@ -347,13 +347,37 @@ class LocalBrain(BaseBrain):
             import subprocess
             import json
             
-            # Create Jarvis personality prompt
+            # Debug: Log what context is being received
+            if context:
+                logger.debug(f"LocalBrain received context with keys: {list(context.keys())}")
+                if 'conversation_context' in context:
+                    logger.debug(f"Conversation context length: {len(context.get('conversation_context', ''))}")
+            else:
+                logger.debug("LocalBrain received no context")
+            
+            # Create Jarvis personality prompt with context awareness
             system_prompt = """You are Jarvis, an AI assistant with a formal, helpful personality. 
 Address the user as 'sir' and maintain a professional, respectful tone. 
-Keep responses concise but informative. You are knowledgeable but acknowledge when you don't have current information."""
+Keep responses concise but informative. You are knowledgeable but acknowledge when you don't have current information.
+
+IMPORTANT: You have access to conversation context and user information. Use this information to provide personalized, contextually aware responses. Remember previous conversations and user details."""
             
-            # Combine system prompt with user input
-            full_prompt = f"{system_prompt}\n\nUser: {user_input}\nJarvis:"
+            # Build context-aware prompt
+            full_prompt = system_prompt
+            
+            # Add context information if available
+            if context:
+                # Add conversation context
+                if 'conversation_context' in context and context['conversation_context']:
+                    full_prompt += f"\n\nCONTEXT INFORMATION:\n{context['conversation_context']}"
+                
+                # Add any other relevant context
+                for key, value in context.items():
+                    if key != 'conversation_context' and value:
+                        full_prompt += f"\n{key.replace('_', ' ').title()}: {value}"
+            
+            # Add the user input
+            full_prompt += f"\n\nUser: {user_input}\nJarvis:"
             
             # Call Ollama via subprocess for reliability
             result = subprocess.run(

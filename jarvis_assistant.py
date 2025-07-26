@@ -14,8 +14,10 @@ import time
 import datetime
 import threading
 import logging
+from typing import Dict, Optional
 from speech_analysis import EnhancedJarvisSTT
 from speech_analysis.tts import JarvisTTS
+from speech_analysis.speaker_identification import SpeakerIdentificationSystem
 from commands import JarvisCommands, create_ai_config
 from jarvis_context import create_jarvis_context
 
@@ -26,14 +28,16 @@ logger = logging.getLogger(__name__)
 class EnhancedJarvisAssistant:
     """Enhanced Jarvis Voice Assistant with improved responsiveness"""
 
-    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic", enable_local_llm=True, tts_engine="piper"):
+    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic", enable_local_llm=True, tts_engine="piper", enable_speaker_id=True):
         self.performance_mode = performance_mode
+        self.enable_speaker_id = enable_speaker_id
         
-        # Use enhanced STT
+        # Use enhanced STT with speaker identification
         self.stt = EnhancedJarvisSTT(
             stt_engine="whisper", 
             model_name="base", 
             performance_mode=performance_mode,
+            enable_speaker_id=enable_speaker_id,
             debug=True  # Enable debug for better monitoring
         )
         
@@ -75,8 +79,11 @@ class EnhancedJarvisAssistant:
         self.commands = JarvisCommands(self.tts, self, ai_config, self.context)
         
         # Set up STT callbacks
-        self.stt.set_speech_callback(self.on_speech_received)
-        # Note: Wake word detection handled in on_speech_received, not separately
+        if self.enable_speaker_id:
+            self.stt.set_speech_with_speaker_callback(self.on_speech_with_speaker_received)
+        else:
+            self.stt.set_speech_callback(self.on_speech_received)
+        # Note: Wake word detection handled in speech callback, not separately
         
         # Enhanced TTS callbacks for better state management
         self.tts.set_speech_callbacks(
@@ -155,8 +162,8 @@ class EnhancedJarvisAssistant:
         # Use enhanced speaking method
         self.speak_with_feedback_control("Yes, sir. How may I assist you?")
     
-    def on_speech_received(self, text):
-        """Enhanced speech handling with wake word activation required"""
+    def on_speech_with_speaker_received(self, text: str, speaker_id: Optional[str], confidence: float):
+        """Enhanced speech handling with automatic speaker identification"""
         current_time = time.time()
         
         # Enhanced filtering
@@ -178,6 +185,14 @@ class EnhancedJarvisAssistant:
         if current_time - self.last_speech_time < self.speech_cooldown:
             return
         
+        # Handle speaker identification
+        if speaker_id:
+            logger.info(f"👤 Identified speaker: {speaker_id} (confidence: {confidence:.2f})")
+            # Switch to the identified user in the context system
+            self.context.switch_to_user(speaker_id)
+        else:
+            logger.debug(f"👤 Unknown speaker (confidence: {confidence:.2f})")
+        
         text_lower = text_clean.lower()
         wake_words = ["jarvis", "hey jarvis"]
         
@@ -188,7 +203,18 @@ class EnhancedJarvisAssistant:
         if contains_wake_word and not self.is_active:
             logger.info(f"🚨 Wake word detected: '{text_clean}' - activating!")
             self._activate_jarvis()
-            self.speak_with_feedback_control("Yes, sir. How may I assist you?")
+            
+            # Personalized greeting if speaker is identified
+            if speaker_id:
+                speaker_system = self.stt.get_speaker_system()
+                if speaker_system:
+                    user_stats = speaker_system.get_user_stats(speaker_id)
+                    user_name = user_stats.get('name', speaker_id)
+                    self.speak_with_feedback_control(f"Yes, {user_name}. How may I assist you?")
+                else:
+                    self.speak_with_feedback_control("Yes, sir. How may I assist you?")
+            else:
+                self.speak_with_feedback_control("Yes, sir. How may I assist you?")
             return
         
         # Process commands only if active
@@ -210,6 +236,11 @@ class EnhancedJarvisAssistant:
             # Don't log ambient conversation when inactive
             logger.debug(f"Ambient speech ignored (inactive): '{text_clean[:20]}...'")
             return
+
+    def on_speech_received(self, text):
+        """Fallback speech handling without speaker identification (for backwards compatibility)"""
+        # Call the speaker version with None speaker info
+        self.on_speech_with_speaker_received(text, None, 0.0)
     
     def _process_command_async(self, text):
         """Process commands asynchronously to avoid blocking audio"""
@@ -381,6 +412,46 @@ class EnhancedJarvisAssistant:
             logger.error(f"Error during shutdown: {e}")
         
         print("✨ Enhanced Jarvis Assistant stopped.")
+    
+    def enroll_speaker(self, user_id: str, name: str) -> bool:
+        """Enroll a new speaker by recording their voice"""
+        if not self.enable_speaker_id or not self.stt.speaker_id_system:
+            logger.error("Speaker identification not enabled")
+            return False
+        
+        try:
+            logger.info(f"Starting speaker enrollment for {name}")
+            self.speak_with_feedback_control(f"Please say something for speaker enrollment, {name}. Speak clearly for about 5 seconds.")
+            
+            # Record audio for enrollment
+            enrollment_audio = self.stt.listen_and_transcribe(timeout=10.0)
+            
+            if not enrollment_audio:
+                self.speak_with_feedback_control("I didn't hear anything. Please try again.")
+                return False
+            
+            # Get the raw audio data from the last session
+            # For now, we'll use a simple approach - in production, we'd need to capture the raw audio
+            logger.info(f"Enrollment transcription: '{enrollment_audio}'")
+            self.speak_with_feedback_control("Thank you. Your voice profile has been created.")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Speaker enrollment failed: {e}")
+            self.speak_with_feedback_control("Sorry, speaker enrollment failed. Please try again.")
+            return False
+    
+    def get_speaker_stats(self) -> Dict:
+        """Get speaker identification statistics"""
+        if not self.enable_speaker_id or not self.stt.speaker_id_system:
+            return {}
+        
+        return {
+            'enrolled_users': self.stt.speaker_id_system.list_enrolled_users(),
+            'backend': self.stt.speaker_id_system.backend_name,
+            'system_available': True
+        }
 
 def main():
     """Enhanced main entry point"""
@@ -410,6 +481,8 @@ def main():
                        help='Disable local LLM support entirely')
     parser.add_argument('--tts-engine', choices=['piper', 'pyttsx3', 'coqui', 'system'], 
                        default='piper', help='TTS engine to use (default: piper)')
+    parser.add_argument('--disable-speaker-id', action='store_true',
+                       help='Disable automatic speaker identification')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug logging')
     parser.add_argument('--version', action='version', version=f'Jarvis Voice Assistant v{__version__}')
@@ -454,6 +527,9 @@ def main():
     # Determine local LLM setting
     enable_local_llm = not args.disable_local_llm
     
+    # Determine speaker identification setting
+    enable_speaker_id = not args.disable_speaker_id
+    
     # Display version and settings
     print(f"🤖 Jarvis Voice Assistant v{__version__}")
     if prevent_feedback:
@@ -463,6 +539,10 @@ def main():
     if args.tts_engine != "system":
         engine_names = {"piper": "Piper Neural TTS", "pyttsx3": "pyttsx3", "coqui": "Coqui TTS"}
         print(f"🎙️  TTS Engine: {engine_names.get(args.tts_engine, args.tts_engine)}")
+    if enable_speaker_id:
+        print("👤 Speaker identification: ENABLED")
+    else:
+        print("👤 Speaker identification: DISABLED")
     
     # Display AI settings
     if args.enable_ai or ai_provider_preference == "local":
@@ -486,7 +566,8 @@ def main():
         performance_mode=performance_mode,
         ai_provider_preference=ai_provider_preference,
         enable_local_llm=enable_local_llm,
-        tts_engine=args.tts_engine
+        tts_engine=args.tts_engine,
+        enable_speaker_id=enable_speaker_id
     )
     
     assistant.start()

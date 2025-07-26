@@ -61,6 +61,9 @@ class AudioConfig:
         # Performance optimizations
         self.smart_silence_detection: bool = optimizations.get('smart_silence_detection', True)
         self.audio_compression: bool = optimizations.get('audio_compression', False)
+        
+        # Audio input device
+        self.input_device_index: Optional[int] = audio_config.get('input_device_index')
 
 
 class AudioBuffer:
@@ -414,7 +417,8 @@ class JarvisSTT:
                  model_name: str = None,
                  wake_words: list = None,
                  debug: bool = None,
-                 performance_mode: str = None):
+                 performance_mode: str = None,
+                 enable_speaker_id: bool = None):
         
         # Load config values if not provided
         config = get_config()
@@ -426,6 +430,8 @@ class JarvisSTT:
                 stt_engine = config.get('stt.default_engine', 'whisper')
         if debug is None:
             debug = config.get('debug.audio_processing', False)
+        if enable_speaker_id is None:
+            enable_speaker_id = config.get('speaker_identification.enabled', True)
         
         self.performance_mode = performance_mode
         self.config = AudioConfig(performance_mode)
@@ -434,6 +440,18 @@ class JarvisSTT:
         self.is_listening = False
         self.is_processing = False
         self.debug = debug
+        self.enable_speaker_id = enable_speaker_id
+        
+        # Initialize speaker identification if enabled
+        self.speaker_id_system = None
+        if self.enable_speaker_id:
+            try:
+                from .speaker_identification import SpeakerIdentificationSystem
+                self.speaker_id_system = SpeakerIdentificationSystem()
+                logger.info("Speaker identification system enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize speaker identification: {e}")
+                self.enable_speaker_id = False
         
         # Enhanced processing queue for non-blocking operation
         self.processing_queue = queue.Queue(maxsize=3)  # Limit queue size
@@ -458,6 +476,7 @@ class JarvisSTT:
         # Callbacks
         self.on_speech_callback: Optional[Callable[[str], None]] = None
         self.on_wake_word_callback: Optional[Callable[[], None]] = None
+        self.on_speech_with_speaker_callback: Optional[Callable[[str, Optional[str], float], None]] = None
 
     def set_speech_callback(self, callback: Callable[[str], None]):
         """Set callback for when speech is transcribed"""
@@ -466,6 +485,14 @@ class JarvisSTT:
     def set_wake_word_callback(self, callback: Callable[[], None]):
         """Set callback for when wake word is detected"""
         self.on_wake_word_callback = callback
+
+    def set_speech_with_speaker_callback(self, callback: Callable[[str, Optional[str], float], None]):
+        """Set callback for when speech is transcribed with speaker identification"""
+        self.on_speech_with_speaker_callback = callback
+    
+    def get_speaker_system(self):
+        """Get the speaker identification system"""
+        return self.speaker_id_system
 
     def start_listening(self):
         """Enhanced start listening with better stream management"""
@@ -485,15 +512,19 @@ class JarvisSTT:
                 self.is_listening = True
                 
                 # Open audio stream with enhanced settings
-                self.stream = self.audio.open(
-                    format=self.config.format,
-                    channels=self.config.channels,
-                    rate=self.config.sample_rate,
-                    input=True,
-                    frames_per_buffer=self.config.chunk_size,
-                    stream_callback=self._audio_callback,
-                    start=False  # Don't start immediately
-                )
+                stream_params = {
+                    'format': self.config.format,
+                    'channels': self.config.channels,
+                    'rate': self.config.sample_rate,
+                    'input': True,
+                    'frames_per_buffer': self.config.chunk_size,
+                    'stream_callback': self._audio_callback,
+                    'start': False  # Don't start immediately
+                }
+                if self.config.input_device_index is not None:
+                    stream_params['input_device_index'] = self.config.input_device_index
+                
+                self.stream = self.audio.open(**stream_params)
                 
                 # Reset buffer state
                 self.audio_buffer.reset_state()
@@ -619,8 +650,38 @@ class JarvisSTT:
                     if transcription:
                         logger.info(f"Transcribed: '{transcription}'")
                         
-                        # Call speech callback (wake word detection handled at assistant level)
-                        if self.on_speech_callback:
+                        # Perform speaker identification if enabled
+                        speaker_id = None
+                        speaker_confidence = 0.0
+                        
+                        if self.enable_speaker_id and self.speaker_id_system:
+                            try:
+                                # Convert int16 audio to float32 for speaker ID
+                                audio_float = audio_data.astype(np.float32) / 32768.0
+                                
+                                identification_result = self.speaker_id_system.identify_speaker(
+                                    audio_float, self.config.sample_rate
+                                )
+                                
+                                speaker_id = identification_result.user_id
+                                speaker_confidence = identification_result.confidence
+                                
+                                if speaker_id:
+                                    logger.info(f"Speaker identified: {identification_result.speaker_name} "
+                                              f"(confidence: {speaker_confidence:.2f})")
+                                else:
+                                    logger.debug(f"Unknown speaker (best match confidence: {speaker_confidence:.2f})")
+                                    
+                            except Exception as e:
+                                logger.error(f"Speaker identification failed: {e}")
+                        
+                        # Call appropriate callback
+                        if self.on_speech_with_speaker_callback:
+                            try:
+                                self.on_speech_with_speaker_callback(transcription, speaker_id, speaker_confidence)
+                            except Exception as e:
+                                logger.error(f"Speech with speaker callback error: {e}")
+                        elif self.on_speech_callback:
                             try:
                                 self.on_speech_callback(transcription)
                             except Exception as e:
@@ -659,13 +720,17 @@ class JarvisSTT:
                 audio = self.audio
             
             # Open audio stream for recording
-            stream = audio.open(
-                format=self.config.format,
-                channels=self.config.channels,
-                rate=self.config.sample_rate,
-                input=True,
-                frames_per_buffer=self.config.chunk_size
-            )
+            stream_params = {
+                'format': self.config.format,
+                'channels': self.config.channels,
+                'rate': self.config.sample_rate,
+                'input': True,
+                'frames_per_buffer': self.config.chunk_size
+            }
+            if self.config.input_device_index is not None:
+                stream_params['input_device_index'] = self.config.input_device_index
+            
+            stream = audio.open(**stream_params)
             
             if self.debug: 
                 logger.info("Listening for speech...")

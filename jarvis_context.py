@@ -341,6 +341,10 @@ class JarvisContext:
                 logger.error(f"Failed to switch to user {user_identifier}: {e}")
                 return False
     
+    def switch_to_user(self, user_identifier: str) -> bool:
+        """Alias for switch_user for backward compatibility with speaker identification"""
+        return self.switch_user(user_identifier)
+    
     def get_current_user(self) -> Dict[str, str]:
         """Get current user information"""
         return {

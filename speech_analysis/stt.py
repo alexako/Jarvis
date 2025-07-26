@@ -494,8 +494,9 @@ class JarvisSTT:
         """Get the speaker identification system"""
         return self.speaker_id_system
 
+
     def start_listening(self):
-        """Enhanced start listening with better stream management"""
+        """Enhanced start listening with proper USB device selection"""
         with self.stream_lock:
             if self.is_listening:
                 logger.warning("Already listening")
@@ -511,7 +512,7 @@ class JarvisSTT:
                 
                 self.is_listening = True
                 
-                # Open audio stream with enhanced settings
+                # Open audio stream with enhanced USB device selection (like simple_train.py)
                 stream_params = {
                     'format': self.config.format,
                     'channels': self.config.channels,
@@ -521,8 +522,18 @@ class JarvisSTT:
                     'stream_callback': self._audio_callback,
                     'start': False  # Don't start immediately
                 }
+                
+                # Use the same device selection logic as simple_train.py
                 if self.config.input_device_index is not None:
-                    stream_params['input_device_index'] = self.config.input_device_index
+                    try:
+                        device_info = self.audio.get_device_info_by_index(self.config.input_device_index)
+                        stream_params['input_device_index'] = self.config.input_device_index
+                        if self.debug:
+                            logger.info(f"🎤 Using audio input device {self.config.input_device_index}: {device_info['name']}")
+                    except Exception as e:
+                        if self.debug:
+                            logger.error(f"❌ Failed to use device {self.config.input_device_index}: {e}")
+                            logger.info("🎤 Falling back to default audio input device")
                 
                 self.stream = self.audio.open(**stream_params)
                 
@@ -531,12 +542,13 @@ class JarvisSTT:
                 
                 # Start the stream
                 self.stream.start_stream()
-                logger.info("Enhanced audio listening started")
+                logger.info("Enhanced audio listening started with USB device support")
                 
             except Exception as e:
                 logger.error(f"Failed to start listening: {e}")
                 self.is_listening = False
                 raise
+
 
     def stop_listening(self):
         """Enhanced stop listening with proper cleanup"""
@@ -550,7 +562,7 @@ class JarvisSTT:
                 # Stop processing thread
                 self._stop_processing_thread()
                 
-                # Stop and close stream
+                # Stop and close stream (if using old callback method)
                 if self.stream:
                     if self.stream.is_active():
                         self.stream.stop_stream()
@@ -610,6 +622,10 @@ class JarvisSTT:
         try:
             # Convert audio data to numpy array
             audio_chunk = np.frombuffer(in_data, dtype=np.int16)
+            
+            # Convert stereo to mono if needed (same as simple_train.py)
+            if self.config.channels == 2:
+                audio_chunk = audio_chunk.reshape(-1, 2).mean(axis=1).astype(np.int16)
             
             # Add to buffer and check for complete utterance
             utterance_complete = self.audio_buffer.add_chunk(audio_chunk, self.config)

@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
+from io import BytesIO
 
 # FastAPI and dependencies
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, UploadFile, File
@@ -50,6 +51,7 @@ class TextRequest(BaseModel):
     """Request model for text interaction"""
     text: str = Field(..., description="Text input to send to Jarvis", min_length=1, max_length=1000)
     use_tts: bool = Field(default=False, description="Whether to generate audio response")
+    stream_audio: bool = Field(default=False, description="Whether to stream audio response in real-time")
     ai_provider: Optional[str] = Field(default=None, description="Preferred AI provider (local, anthropic, deepseek)")
     context: Optional[Dict[str, Any]] = Field(default=None, description="Additional context for the request")
     user: Optional[str] = Field(default=None, description="User identifier for multi-user context (optional)")
@@ -60,8 +62,16 @@ class TextResponse(BaseModel):
     provider_used: str = Field(..., description="AI provider that handled the request")
     processing_time: float = Field(..., description="Time taken to process request in seconds")
     audio_url: Optional[str] = Field(default=None, description="URL to generated audio file if TTS was requested")
+    stream_url: Optional[str] = Field(default=None, description="URL to audio stream if streaming was requested")
     request_id: str = Field(..., description="Unique identifier for this request")
     current_user: Optional[str] = Field(default=None, description="Current active user in context system")
+
+class StreamingAudioRequest(BaseModel):
+    """Request model for streaming audio"""
+    text: str = Field(..., description="Text to convert to streaming audio", min_length=1, max_length=2000)
+    chunk_size: int = Field(default=4096, description="Audio chunk size for streaming (bytes)")
+    format: str = Field(default="wav", description="Audio format (wav, mp3)")
+    quality: str = Field(default="medium", description="Audio quality (low, medium, high)")
 
 class StatusResponse(BaseModel):
     """System status response"""
@@ -361,22 +371,33 @@ async def chat_with_jarvis(
         
         # Generate audio if requested
         audio_url = None
+        stream_url = None
         if request.use_tts and jarvis_tts:
-            audio_filename = f"response_{request_id}.wav"
-            background_tasks.add_task(generate_audio_response, response, audio_filename)
-            audio_url = f"/audio/{audio_filename}"
+            if request.stream_audio:
+                # Provide streaming audio URL
+                stream_url = f"/audio/stream/{request_id}"
+                # Store the response text for streaming
+                active_requests[request_id]["response_text"] = response
+            else:
+                # Generate traditional audio file
+                audio_filename = f"response_{request_id}.wav"
+                background_tasks.add_task(generate_audio_response, response, audio_filename)
+                audio_url = f"/audio/{audio_filename}"
         
         # Get current user info
         current_jarvis_user = jarvis_context.get_current_user()
         
-        # Clean up request tracking
-        active_requests.pop(request_id, None)
+        # Don't clean up request tracking here if streaming is requested
+        # Let the streaming endpoint handle cleanup
+        if not (request.use_tts and request.stream_audio):
+            active_requests.pop(request_id, None)
         
         return TextResponse(
             response=response,
             provider_used=provider_used,
             processing_time=processing_time,
             audio_url=audio_url,
+            stream_url=stream_url,
             request_id=request_id,
             current_user=current_jarvis_user['display_name']
         )
@@ -410,6 +431,109 @@ async def get_audio_file(filename: str):
         audio_path,
         media_type="audio/wav",
         filename=filename
+    )
+
+@app.get("/audio/stream/{request_id}")
+async def stream_audio_response(request_id: str):
+    """Stream audio response in real-time chunks"""
+    # Check if request exists and has response text
+    if request_id not in active_requests:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio stream not found or expired"
+        )
+    
+    request_info = active_requests[request_id]
+    response_text = request_info.get("response_text")
+    
+    if not response_text:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No response text available for streaming"
+        )
+    
+    if not jarvis_tts:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TTS service not available"
+        )
+    
+    async def generate_audio_stream():
+        """Generate audio stream chunks"""
+        try:
+            # Generate complete audio first
+            audio_data = jarvis_tts.tts_engine.synthesize(response_text)
+            
+            if not audio_data:
+                yield b"Audio generation failed"
+                return
+            
+            # Stream audio in chunks
+            chunk_size = 4096
+            for i in range(0, len(audio_data), chunk_size):
+                chunk = audio_data[i:i + chunk_size]
+                yield chunk
+                # Small delay to simulate real-time streaming
+                await asyncio.sleep(0.01)
+                
+        except Exception as e:
+            logger.error(f"Error in audio streaming {request_id}: {e}")
+            yield b"Streaming error occurred"
+        finally:
+            # Clean up request after streaming
+            active_requests.pop(request_id, None)
+    
+    return StreamingResponse(
+        generate_audio_stream(),
+        media_type="audio/wav",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+@app.post("/audio/stream")
+async def create_audio_stream(request: StreamingAudioRequest):
+    """Create a new audio stream for text"""
+    if not jarvis_tts:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TTS service not available"
+        )
+    
+    request_id = generate_request_id()
+    
+    async def generate_streaming_audio():
+        """Generate streaming audio chunks for text"""
+        try:
+            # Generate audio data
+            audio_data = jarvis_tts.tts_engine.synthesize(request.text)
+            
+            if not audio_data:
+                yield b"Audio generation failed"
+                return
+            
+            # Stream in specified chunks
+            for i in range(0, len(audio_data), request.chunk_size):
+                chunk = audio_data[i:i + request.chunk_size]
+                yield chunk
+                # Simulate real-time streaming with small delay
+                await asyncio.sleep(0.01)
+                
+        except Exception as e:
+            logger.error(f"Error in direct audio streaming {request_id}: {e}")
+            yield b"Streaming error occurred"
+    
+    return StreamingResponse(
+        generate_streaming_audio(),
+        media_type="audio/wav" if request.format == "wav" else "audio/mpeg",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "X-Request-ID": request_id,
+        }
     )
 
 @app.get("/providers", response_model=Dict[str, Dict[str, Any]])

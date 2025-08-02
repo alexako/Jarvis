@@ -1,0 +1,62 @@
+# Systemd service file for Jarvis API
+# Place this at /etc/systemd/system/jarvis-api.service
+
+[Unit]
+Description=Jarvis Voice Assistant API Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=exec
+User=jarvis
+Group=jarvis
+WorkingDirectory=/opt/jarvis
+Environment=PATH=/opt/jarvis/venv/bin
+Environment=PYTHONPATH=/opt/jarvis
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/jarvis /var/lib/jarvis /tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=2G
+CPUQuota=200%
+
+# Environment variables for production
+Environment=JARVIS_JWT_SECRET=your-jwt-secret-here
+Environment=JARVIS_API_KEY_1=your-api-key-here
+Environment=JARVIS_API_KEY_1_NAME=production_client
+Environment=JARVIS_API_KEY_1_PERMISSIONS=read,chat,stream
+Environment=JARVIS_ADMIN_KEY=your-admin-key-here
+Environment=JARVIS_ALLOWED_ORIGINS=https://your-domain.com,https://app.your-domain.com
+Environment=JARVIS_TRUSTED_HOSTS=your-domain.com,admin.your-domain.com
+Environment=JARVIS_DB_PATH=/var/lib/jarvis/jarvis_memory.db
+Environment=JARVIS_AUDIO_DIR=/var/lib/jarvis/audio
+Environment=JARVIS_ENABLE_DOCS=false
+Environment=ANTHROPIC_API_KEY=your-anthropic-key
+Environment=DEEPSEEK_API_KEY=your-deepseek-key
+
+# Start the service
+ExecStart=/opt/jarvis/venv/bin/python /opt/jarvis/jarvis_api_production.py --host 127.0.0.1 --port 8000 --workers 4
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+KillMode=mixed
+TimeoutStopSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-api
+
+[Install]
+WantedBy=multi-user.target

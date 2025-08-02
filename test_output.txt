@@ -1,0 +1,86 @@
+🚀 Starting Jarvis Test Suite
+============================================================
+🔍 Checking test environment...
+✅ DeepSeek API key found (starts with: sk-cd516e1...)
+✅ Anthropic API key found (starts with: sk-ant-api...)
+✅ Python version: Python 3.12.3
+✅ Environment check complete
+
+📋 Running 6 test suite(s)...
+   (Critical tests only)
+
+🧪 Running DeepSeek Flag Unit Tests...
+   📝 Command line flag parsing and validation for DeepSeek
+   ✅ PASSED - 7 tests, 7 passed, 0 failed
+   ⏱️  Duration: 6.20s
+
+🧪 Running DeepSeek Integration Tests...
+   📝 DeepSeek API integration and functionality
+   ✅ PASSED - 9 tests, 9 passed, 0 failed
+   ⏱️  Duration: 8.31s
+
+🧪 Running DeepSeek End-to-End Tests...
+   📝 Complete system integration with DeepSeek
+   ✅ PASSED - 9 tests, 9 passed, 0 failed
+   ⏱️  Duration: 14.95s
+
+🧪 Running Anthropic Flag Unit Tests...
+   📝 Command line flag parsing and validation for Anthropic
+   ✅ PASSED - 10 tests, 10 passed, 0 failed
+   ⏱️  Duration: 10.86s
+
+🧪 Running Anthropic Integration Tests...
+   📝 Anthropic Claude API integration and functionality
+   ✅ PASSED - 14 tests, 14 passed, 0 failed
+   ⏱️  Duration: 4.79s
+
+🧪 Running Anthropic End-to-End Tests...
+   📝 Complete system integration with Anthropic Claude
+   ✅ PASSED - 13 tests, 13 passed, 0 failed
+   ⏱️  Duration: 14.63s
+
+============================================================
+📊 TEST SUMMARY
+============================================================
+⏱️  Total Duration: 59.78s
+🧪 Total Tests: 62
+✅ Passed: 62
+❌ Failed: 0
+💥 Errors: 0
+📈 Success Rate: 100.0%
+
+📋 TEST SUITE BREAKDOWN:
+----------------------------------------
+✅ DeepSeek Flag Unit Tests
+   Status: PASSED
+   Tests: 7 run, 7 passed
+   Duration: 6.20s
+
+✅ DeepSeek Integration Tests
+   Status: PASSED
+   Tests: 9 run, 9 passed
+   Duration: 8.31s
+
+✅ DeepSeek End-to-End Tests
+   Status: PASSED
+   Tests: 9 run, 9 passed
+   Duration: 14.95s
+
+✅ Anthropic Flag Unit Tests
+   Status: PASSED
+   Tests: 10 run, 10 passed
+   Duration: 10.86s
+
+✅ Anthropic Integration Tests
+   Status: PASSED
+   Tests: 14 run, 14 passed
+   Duration: 4.79s
+
+✅ Anthropic End-to-End Tests
+   Status: PASSED
+   Tests: 13 run, 13 passed
+   Duration: 14.63s
+
+============================================================
+🎯 OVERALL RESULT: PASSED
+============================================================

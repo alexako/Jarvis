@@ -661,6 +661,7 @@ class JarvisContext:
                         
                         self.user_name = value
                         logger.info(f"Learned and stored user's name: {value} (ID: {self.current_user_id})")
+
                     
             except Exception as e:
                 logger.error(f"Failed to learn about user: {e}")

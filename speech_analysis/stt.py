@@ -463,6 +463,16 @@ class JarvisSTT:
         self.stream = None
         self.audio = None
         
+        # Enhanced processing queue for non-blocking operation
+        self.processing_queue = queue.Queue(maxsize=3)  # Limit queue size
+        self.processing_thread = None
+        self.processing_thread_running = False
+        
+        # Audio stream state management
+        self.stream_lock = threading.RLock()
+        self.stream = None
+        self.audio = None
+        
         # Initialize STT engine with performance mode
         if stt_engine.lower() == "whisper":
             self.stt_engine = WhisperSTT(model_name, performance_mode)
@@ -497,6 +507,7 @@ class JarvisSTT:
 
     def start_listening(self):
         """Enhanced start listening with proper USB device selection"""
+
         with self.stream_lock:
             if self.is_listening:
                 logger.warning("Already listening")
@@ -549,7 +560,6 @@ class JarvisSTT:
                 self.is_listening = False
                 raise
 
-
     def stop_listening(self):
         """Enhanced stop listening with proper cleanup"""
         with self.stream_lock:
@@ -562,7 +572,6 @@ class JarvisSTT:
                 # Stop processing thread
                 self._stop_processing_thread()
                 
-                # Stop and close stream (if using old callback method)
                 if self.stream:
                     if self.stream.is_active():
                         self.stream.stop_stream()
@@ -626,7 +635,7 @@ class JarvisSTT:
             # Convert stereo to mono if needed (same as simple_train.py)
             if self.config.channels == 2:
                 audio_chunk = audio_chunk.reshape(-1, 2).mean(axis=1).astype(np.int16)
-            
+
             # Add to buffer and check for complete utterance
             utterance_complete = self.audio_buffer.add_chunk(audio_chunk, self.config)
             

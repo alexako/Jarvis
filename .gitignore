@@ -18,3 +18,23 @@ audio_test.wav
 # Model files and downloaded data
 models/
 voices/
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.pt
+*.pkl
+*.onnx
+*.tflite
+
+# Large voice/audio model files
+voices/**/*.pth
+voices/**/*.bin
+voices/**/*.safetensors
+voices/**/*.ckpt
+voices/**/*.pt
+voices/**/*.pkl
+voices/**/*.onnx
+voices/**/*.tflite
+voices/**/*.tar.gz
+voices/**/*.zip

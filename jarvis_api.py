@@ -275,11 +275,12 @@ async def health_check():
     """Health check endpoint"""
     components = {}
     
-    # Check AI brain health
+    # Check AI brain health (lightweight - no external API calls)
     if jarvis_brain:
         components["ai_brain"] = jarvis_brain.is_available()
         for provider, brain in jarvis_brain.brains.items():
-            components[f"ai_provider_{provider.value}"] = brain.is_healthy()
+            # Check if brain is configured and available, not if external API is responsive
+            components[f"ai_provider_{provider.value}"] = brain.available
     else:
         components["ai_brain"] = False
     

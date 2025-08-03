@@ -18,7 +18,11 @@ from io import BytesIO
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), 'deployment', '.env'))
+import os
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'deployment', '.env')
+print(f"Loading .env from: {env_path}")
+load_dotenv(env_path)
+print(f"JARVIS_API_KEY_1 loaded: {os.getenv('JARVIS_API_KEY_1', 'NOT_FOUND')}")
 
 # FastAPI and dependencies
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, UploadFile, File, Request

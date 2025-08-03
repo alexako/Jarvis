@@ -309,8 +309,8 @@ class DeepSeekBrain(BaseBrain):
 class LocalBrain(BaseBrain):
     """Local Ollama-powered brain for private, offline AI responses"""
     
-    def __init__(self, model_name: str = "llama3.2:latest"):
-        super().__init__("Local Llama")
+    def __init__(self, model_name: str = "gemma3:4b"):
+        super().__init__("Local Gemma")
         self.model_name = model_name
         self.base_url = "http://localhost:11434"
         

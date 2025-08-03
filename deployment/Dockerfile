@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     libportaudio2 \
-    libportaudio-dev \
+    portaudio19-dev \
     libasound2-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
@@ -32,18 +32,12 @@ RUN groupadd -r jarvis && useradd -r -g jarvis jarvis
 WORKDIR /app
 
 # Copy requirements first (for better caching)
-COPY requirements.txt .
+COPY deployment/requirements-linux.txt requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install production-specific dependencies
-RUN pip install --no-cache-dir \
-    uvicorn[standard]==0.24.0 \
-    gunicorn==21.2.0 \
-    slowapi==0.1.9 \
-    pyjwt==2.8.0 \
-    prometheus-client==0.19.0
+# Production dependencies already included in requirements-linux.txt
 
 # Copy application code
 COPY . .

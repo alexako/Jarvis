@@ -100,8 +100,8 @@
   },
   "local_llm": {
     "enabled": true,
-    "model": "gemma3:4b",
-    "timeout": 30,
+    "model": "phi3.5:3.8b",
+    "timeout": 20,
     "max_context_length": 4096,
     "temperature": 0.7,
     "ollama_url": "http://localhost:11434"

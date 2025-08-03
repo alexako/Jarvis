@@ -8,6 +8,7 @@ import datetime
 import logging
 import platform
 import random
+import re
 import sys
 import os
 from typing import Optional, Dict, Any
@@ -138,9 +139,12 @@ class JarvisCommands:
         logger.info(f"Processing command: '{text_clean}'")
         
         # Check for built-in commands first (fast local processing)
+        # Use word boundary matching to prevent false matches like "hi" in "this"
         command_matched = False
         for command, handler in self.command_mappings.items():
-            if command in text_lower:
+            # Create regex pattern with word boundaries for better matching
+            pattern = r'\b' + re.escape(command) + r'\b'
+            if re.search(pattern, text_lower):
                 logger.info(f"Matched built-in command: {command}")
                 try:
                     # Some commands need the full text for context

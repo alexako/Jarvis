@@ -44,6 +44,7 @@ from ai_brain import AIBrainManager, BrainProvider
 from speech_analysis.tts import JarvisTTS
 from commands import JarvisCommands, create_ai_config
 from jarvis_context import create_jarvis_context
+from pushover_notifications import notify_new_user, notify_system_event
 
 # Configure production logging
 handlers = [logging.StreamHandler()]
@@ -140,6 +141,12 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(periodic_cleanup())
     
     logger.info("✅ Jarvis API Server ready for production!")
+    
+    # Send startup notification
+    try:
+        await notify_system_event("API_START", "Jarvis API server started and ready for production", priority=0)
+    except Exception as e:
+        logger.warning(f"Failed to send startup notification: {e}")
     
     yield
     
@@ -410,6 +417,18 @@ async def chat_with_jarvis(
         'use_tts': chat_request.use_tts,
         'stream_audio': chat_request.stream_audio
     }, request)
+    
+    # Send Pushover notification for new user conversations (async, non-blocking)
+    try:
+        client_ip = request.client.host
+        background_tasks.add_task(
+            notify_new_user,
+            current_user['user'],
+            chat_request.text,
+            client_ip
+        )
+    except Exception as e:
+        logger.warning(f"Failed to schedule user notification: {e}")
     
     try:
         if not jarvis_commands or not jarvis_context:

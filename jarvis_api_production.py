@@ -16,6 +16,10 @@ from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 from io import BytesIO
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), 'deployment', '.env'))
+
 # FastAPI and dependencies
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware

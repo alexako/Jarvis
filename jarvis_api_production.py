@@ -368,6 +368,27 @@ async def get_status(
         local_mode=jarvis_brain.primary_brain.provider_name == "Local Phi-3.5" if jarvis_brain else False
     )
 
+@app.get("/providers", response_model=Dict[str, Dict[str, Any]])
+@limiter.limit("20/minute")
+async def get_ai_providers(
+    request: Request,
+    current_user: dict = Depends(require_permission("read"))
+):
+    """Get information about available AI providers (requires authentication)"""
+    if not jarvis_brain:
+        return {}
+    
+    providers = {}
+    for provider, brain in jarvis_brain.brains.items():
+        providers[provider.value] = {
+            "name": brain.provider_name,
+            "healthy": brain.is_healthy(),
+            "is_primary": brain == jarvis_brain.primary_brain,
+            "is_fallback": brain == jarvis_brain.fallback_brain
+        }
+    
+    return providers
+
 @app.post("/chat", response_model=TextResponse)
 @limiter.limit("60/minute")
 async def chat_with_jarvis(

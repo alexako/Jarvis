@@ -6,22 +6,26 @@ Test script to verify command matching works correctly
 import re
 
 def test_command_matching():
-    """Test the improved command matching logic"""
+    """Test the improved command matching logic with specific phrases"""
     
-    # Commands that should be matched
-    commands = ['hi', 'hello', 'time', 'date', 'status']
+    # Commands that should be matched (updated to new specific commands)
+    commands = ['hi jarvis', 'hello jarvis', 'what time is it', 'current date', 'jarvis status', 
+                'help me', 'tell me a joke', 'run voice test', 'memory usage']
     
     # Test cases: (input_text, expected_matches)
     test_cases = [
-        ("Hi there", ['hi']),
-        ("Hello Jarvis", ['hello']),
-        ("What time is it", ['time']),
-        ("This is a test", []),  # Should NOT match 'hi' in 'this'
-        ("I'm going with PushOver", []),  # Should NOT match 'hi' in 'with'
-        ("Hi", ['hi']),
-        ("time for lunch", ['time']),
-        ("Something within it", []),  # Should NOT match 'hi' as substring
-        ("Say hi to everyone", ['hi']),  # Should match 'hi' as word
+        ("Hi Jarvis, how are you?", ['hi jarvis']),
+        ("Hello Jarvis", ['hello jarvis']),
+        ("What time is it?", ['what time is it']),
+        ("This is a test", []),  # Should NOT match anything
+        ("I'm going with PushOver to test notifications", []),  # Should NOT match 'test'
+        ("Can you help me with this?", ['help me']),
+        ("I want to test this feature", []),  # Should NOT match old 'test' command
+        ("Run voice test please", ['run voice test']),  # Should match specific test command
+        ("The memory usage is high", ['memory usage']),  # Should match specific memory command
+        ("I need help", []),  # Should NOT match 'help me' exactly
+        ("Tell me a joke", ['tell me a joke']),
+        ("What's the current date?", ['current date']),  # Should match 'current date'
     ]
     
     print("Testing improved command matching...")

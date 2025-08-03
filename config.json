@@ -100,7 +100,7 @@
   },
   "local_llm": {
     "enabled": true,
-    "model": "llama3.2:latest",
+    "model": "gemma3:4b",
     "timeout": 30,
     "max_context_length": 4096,
     "temperature": 0.7,

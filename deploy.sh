@@ -170,36 +170,95 @@ deploy_systemd() {
         exit 1
     fi
     
-    # Create user and directories
-    useradd -r -s /bin/false jarvis 2>/dev/null || log_info "User jarvis already exists"
+    # Detect OS and create user accordingly
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        log_info "Detected macOS - using current user instead of creating jarvis user"
+        JARVIS_USER=$(logname)
+        JARVIS_GROUP="staff"
+    else
+        # Linux
+        useradd -r -s /bin/false jarvis 2>/dev/null || log_info "User jarvis already exists"
+        JARVIS_USER="jarvis"
+        JARVIS_GROUP="jarvis"
+    fi
+    
+    # Create directories
     mkdir -p /opt/jarvis /var/log/jarvis /var/lib/jarvis
-    chown -R jarvis:jarvis /var/log/jarvis /var/lib/jarvis
+    chown -R $JARVIS_USER:$JARVIS_GROUP /var/log/jarvis /var/lib/jarvis 2>/dev/null || true
     
     # Copy application
     cp -r . /opt/jarvis/
-    chown -R jarvis:jarvis /opt/jarvis
+    chown -R $JARVIS_USER:$JARVIS_GROUP /opt/jarvis 2>/dev/null || true
     
     # Create virtual environment
     cd /opt/jarvis
-    sudo -u jarvis python3 -m venv venv
-    sudo -u jarvis venv/bin/pip install -r requirements.txt
-    sudo -u jarvis venv/bin/pip install slowapi pyjwt uvicorn[standard] gunicorn
+    sudo -u $JARVIS_USER python3 -m venv venv
+    sudo -u $JARVIS_USER venv/bin/pip install -r requirements.txt
+    sudo -u $JARVIS_USER venv/bin/pip install slowapi pyjwt uvicorn[standard] gunicorn
     
-    # Install systemd service
-    cp deployment/systemd.service /etc/systemd/system/jarvis-api.service
-    systemctl daemon-reload
-    systemctl enable jarvis-api
-    
-    # Start service
-    systemctl start jarvis-api
-    
-    # Check status
-    if systemctl is-active --quiet jarvis-api; then
-        log_success "Jarvis API service is running"
+    # Install service
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS - use launchd
+        log_info "Creating launchd service for macOS"
+        cat > /Library/LaunchDaemons/com.jarvis.api.plist << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jarvis.api</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/jarvis/venv/bin/python</string>
+        <string>/opt/jarvis/jarvis_api_production.py</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/opt/jarvis</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>UserName</key>
+    <string>$JARVIS_USER</string>
+    <key>StandardOutPath</key>
+    <string>/var/log/jarvis/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/jarvis/stderr.log</string>
+</dict>
+</plist>
+EOF
+        launchctl load /Library/LaunchDaemons/com.jarvis.api.plist
+        launchctl start com.jarvis.api
+        sleep 3
+        
+        # Check status
+        if launchctl list | grep -q com.jarvis.api; then
+            log_success "Jarvis API service is running"
+        else
+            log_error "Failed to start Jarvis API service"
+            launchctl list | grep jarvis || true
+            exit 1
+        fi
     else
-        log_error "Jarvis API service failed to start"
-        systemctl status jarvis-api
-        exit 1
+        # Linux - use systemd
+        cp deployment/systemd.service /etc/systemd/system/jarvis-api.service
+        systemctl daemon-reload
+        systemctl enable jarvis-api
+        systemctl start jarvis-api
+        
+        # Check status
+        if systemctl is-active --quiet jarvis-api; then
+            log_success "Jarvis API service is running"
+        else
+            log_error "Jarvis API service failed to start"
+            systemctl status jarvis-api
+            exit 1
+        fi
     fi
     
     log_success "Systemd deployment completed"

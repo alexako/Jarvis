@@ -322,7 +322,7 @@ async def get_status():
         uptime=uptime,
         ai_providers=ai_providers,
         tts_engine=jarvis_tts.tts_engine.__class__.__name__ if jarvis_tts else "none",
-        local_mode=jarvis_brain.primary_brain.provider_name == "Local Llama" if jarvis_brain else False
+        local_mode=jarvis_brain.primary_brain.provider_name == "Local Gemma" if jarvis_brain else False
     )
 
 @app.post("/chat", response_model=TextResponse)

@@ -40,13 +40,20 @@ from commands import JarvisCommands, create_ai_config
 from jarvis_context import create_jarvis_context
 
 # Configure production logging
+handlers = [logging.StreamHandler()]
+try:
+    # Try to add file handler if directory exists and is writable
+    import os
+    os.makedirs('/var/log/jarvis', exist_ok=True)
+    handlers.append(logging.FileHandler('/var/log/jarvis/api.log'))
+except (OSError, PermissionError):
+    # Fall back to just console logging if file logging isn't available
+    print("Warning: Cannot write to /var/log/jarvis/api.log, using console logging only")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('/var/log/jarvis/api.log'),
-        logging.StreamHandler()
-    ]
+    handlers=handlers
 )
 logger = logging.getLogger(__name__)
 
@@ -85,8 +92,8 @@ class StreamingAudioRequest(BaseModel):
     """Request model for streaming audio with validation"""
     text: str = Field(..., description="Text to convert to streaming audio", min_length=1, max_length=5000)
     chunk_size: int = Field(default=4096, description="Audio chunk size for streaming (bytes)", ge=1024, le=16384)
-    format: str = Field(default="wav", description="Audio format", regex="^(wav|mp3)$")
-    quality: str = Field(default="medium", description="Audio quality", regex="^(low|medium|high)$")
+    format: str = Field(default="wav", description="Audio format", pattern="^(wav|mp3)$")
+    quality: str = Field(default="medium", description="Audio quality", pattern="^(low|medium|high)$")
 
     class Config:
         extra = "forbid"
@@ -351,7 +358,7 @@ async def get_status(
         uptime=uptime,
         ai_providers=ai_providers,
         tts_engine=jarvis_tts.tts_engine.__class__.__name__ if jarvis_tts else "none",
-        local_mode=jarvis_brain.primary_brain.provider_name == "Local Llama" if jarvis_brain else False
+        local_mode=jarvis_brain.primary_brain.provider_name == "Local Gemma" if jarvis_brain else False
     )
 
 @app.post("/chat", response_model=TextResponse)

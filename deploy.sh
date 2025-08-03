@@ -170,6 +170,17 @@ deploy_systemd() {
         exit 1
     fi
     
+    # Stop existing service first to ensure clean restart
+    log_info "Stopping existing Jarvis API service..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS - stop launchd service
+        launchctl unload /Library/LaunchDaemons/com.jarvis.api.plist 2>/dev/null || log_warning "Service was not running"
+    else
+        # Linux - stop systemd service
+        systemctl stop jarvis-api 2>/dev/null || log_warning "Service was not running"
+    fi
+    sleep 2
+    
     # Detect OS and create user accordingly
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
@@ -233,7 +244,6 @@ deploy_systemd() {
 </plist>
 EOF
         launchctl load /Library/LaunchDaemons/com.jarvis.api.plist
-        launchctl start com.jarvis.api
         sleep 3
         
         # Check status

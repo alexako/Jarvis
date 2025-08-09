@@ -53,46 +53,48 @@ class JarvisCommands:
             self.ai_enabled = False
         
         # Built-in command mappings - these run locally for speed/reliability
+        # NOTE: Use specific phrases to avoid false matches in normal conversation
         self.command_mappings = {
-            # Greetings
-            'hello': self._handle_greeting,
-            'hi': self._handle_greeting,
+            # Greetings - only exact matches or start-of-sentence
+            'hello jarvis': self._handle_greeting,
+            'hi jarvis': self._handle_greeting,
+            'hey jarvis': self._handle_greeting,
             'good morning': self._handle_greeting,
             'good afternoon': self._handle_greeting,
             'good evening': self._handle_greeting,
             
-            # Time and date
-            'time': self._handle_time,
+            # Time and date - specific questions only
             'what time is it': self._handle_time,
-            'date': self._handle_date,
+            'current time': self._handle_time,
             'what date is it': self._handle_date,
             "what's the date": self._handle_date,
+            'current date': self._handle_date,
             
-            # Status and system info
+            # Status and system info - specific requests
             'how are you': self._handle_status,
-            'status': self._handle_status,
+            'jarvis status': self._handle_status,
             'system status': self._handle_system_status,
-            'battery': self._handle_battery,
-            'memory': self._handle_memory,
+            'battery status': self._handle_battery,
+            'check memory usage': self._handle_memory,
             'disk space': self._handle_disk_space,
             
-            # Help and identity
-            'help': self._handle_help,
+            # Help and identity - specific requests
+            'jarvis help me': self._handle_help,
             'what can you do': self._handle_help,
-            'commands': self._handle_help,
+            'list commands': self._handle_help,
             'who are you': self._handle_identity,
             'introduce yourself': self._handle_identity,
             
-            # Entertainment
-            'joke': self._handle_joke,
+            # Entertainment - specific requests
             'tell me a joke': self._handle_joke,
+            'make me laugh': self._handle_joke,
             
-            # Control commands
+            # Control commands - specific phrases
             'stop listening': self._handle_stop_listening,
-            'shutdown': self._handle_shutdown,
-            'goodbye': self._handle_goodbye,
-            'bye': self._handle_goodbye,
-            'test': self._handle_test,
+            'shutdown system': self._handle_shutdown,
+            'goodbye jarvis': self._handle_goodbye,
+            'bye jarvis': self._handle_goodbye,
+            'run voice test': self._handle_test,
             
             # AI brain management
             'ai status': self._handle_ai_status,

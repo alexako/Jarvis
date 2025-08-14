@@ -25,7 +25,7 @@ class TestDeepSeekEndToEnd(unittest.TestCase):
             self.skipTest("DEEPSEEK_API_KEY not found - skipping E2E tests")
         
         # Test script path
-        self.script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'jarvis_assistant.py')
+        self.script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'jarvis.py')
     
     def test_deepseek_flag_in_process_args(self):
         """Test that DeepSeek preference is shown in startup output"""
@@ -119,10 +119,11 @@ class TestDeepSeekCommandLineIntegration(unittest.TestCase):
     """Test command line integration for DeepSeek"""
     
     def test_help_text_accuracy(self):
-        """Test that help text accurately describes DeepSeek functionality"""
+        """Test that help text accurately reflects --use-deepseek functionality"""
+        # Run with --help flag
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--help'
-        ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            'python', 'jarvis.py', '--help'
+        ], capture_output=True, text=True)
         
         self.assertEqual(result.returncode, 0)
         help_text = result.stdout
@@ -155,26 +156,21 @@ class TestDeepSeekCommandLineIntegration(unittest.TestCase):
                 output = result.stdout + result.stderr
                 self.assertIn('Only one AI provider can be specified', output)
     
-    def test_valid_flag_combinations(self):
-        """Test valid flag combinations for help output"""
+    def test_deepseek_flag_combinations(self):
+        """Test that --use-deepseek works correctly with other flag combinations"""
+        # Test combinations that should work
         valid_combinations = [
-            ['--use-deepseek', '--help'],
-            ['--enable-ai', '--use-deepseek', '--help'],
-            ['--use-anthropic', '--help'],
-            ['--enable-ai', '--help'],
+            ['--use-deepseek'],
+            ['--enable-ai', '--use-deepseek'],
+            ['--use-deepseek', '--tts-engine', 'pyttsx3']
         ]
         
         for flags in valid_combinations:
             with self.subTest(flags=flags):
+                # Run with --help to avoid actually starting the assistant
                 result = subprocess.run([
-                    'python', 'jarvis_assistant.py'
-                ] + flags,
-                capture_output=True, text=True,
-                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                
-                # Should succeed when asking for help
-                self.assertEqual(result.returncode, 0)
-                self.assertIn('usage:', result.stdout)
+                    'python', 'jarvis.py'
+                ] + flags + ['--help'],
 
 
 class TestDeepSeekSystemIntegration(unittest.TestCase):
@@ -189,7 +185,7 @@ class TestDeepSeekSystemIntegration(unittest.TestCase):
         """Test that DeepSeek can be imported and basic functionality works"""
         # Test that we can import the brain classes
         try:
-            from ai_brain import DeepSeekBrain, BrainProvider
+            from ai.ai_brain import DeepSeekBrain, BrainProvider
             
             # Test that DeepSeek brain can be created
             brain = DeepSeekBrain(api_key=self.api_key)

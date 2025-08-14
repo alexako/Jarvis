@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
+import sys
+import os
 import time
-from jarvis_assistant import JarvisAssistant
+
+# Add the src directory to the path so we can import modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+from core.jarvis_assistant import JarvisAssistant
 
 def demo_voice_responses():
     """Demo the TTS responses without STT"""

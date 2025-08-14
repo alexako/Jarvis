@@ -17,7 +17,7 @@ class TestDeepSeekFlag(unittest.TestCase):
     def test_deepseek_flag_help_text(self):
         """Test that --use-deepseek flag appears in help text"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--help'
+            'python', 'jarvis.py', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertIn('--use-deepseek', result.stdout)
@@ -26,7 +26,7 @@ class TestDeepSeekFlag(unittest.TestCase):
     def test_mutual_exclusivity_error(self):
         """Test that using both AI provider flags raises error"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--enable-ai', '--use-anthropic', '--use-deepseek'
+            'python', 'jarvis.py', '--enable-ai', '--use-anthropic', '--use-deepseek'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertNotEqual(result.returncode, 0)
@@ -38,7 +38,7 @@ class TestDeepSeekFlag(unittest.TestCase):
         """Test that --use-deepseek flag alone doesn't cause errors during parsing"""
         # Test just the help to ensure flag is recognized
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--use-deepseek', '--help'
+            'python', 'jarvis.py', '--use-deepseek', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertEqual(result.returncode, 0)
@@ -47,7 +47,7 @@ class TestDeepSeekFlag(unittest.TestCase):
     def test_anthropic_flag_no_error(self):
         """Test that --use-anthropic flag alone doesn't cause errors during parsing"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--use-anthropic', '--help'
+            'python', 'jarvis.py', '--use-anthropic', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertEqual(result.returncode, 0)
@@ -64,7 +64,7 @@ class TestDeepSeekConfig(unittest.TestCase):
         args.use_deepseek = True
         args.use_anthropic = False
         
-        # Test the logic from jarvis_assistant.py:190-193
+        # Test the logic from jarvis.py:190-193
         if args.use_deepseek:
             ai_provider_preference = "deepseek"
         elif args.use_anthropic:

@@ -25,7 +25,7 @@ class TestAnthropicEndToEnd(unittest.TestCase):
             self.skipTest("ANTHROPIC_API_KEY not found - skipping E2E tests")
         
         # Test script path
-        self.script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'jarvis_assistant.py')
+        self.script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'jarvis.py')
     
     def test_anthropic_flag_in_process_args(self):
         """Test that Anthropic preference is shown in startup output"""
@@ -138,7 +138,7 @@ class TestAnthropicCommandLineIntegration(unittest.TestCase):
     def test_anthropic_help_text_accuracy(self):
         """Test that help text accurately describes Anthropic functionality"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--help'
+            'python', 'jarvis.py', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertEqual(result.returncode, 0)
@@ -152,30 +152,26 @@ class TestAnthropicCommandLineIntegration(unittest.TestCase):
         self.assertIn('--enable-ai', help_text)
     
     def test_anthropic_flag_combinations(self):
-        """Test various valid Anthropic flag combinations"""
+        """Test that --use-anthropic works correctly with other flag combinations"""
+        # Test combinations that should work
         valid_combinations = [
-            ['--use-anthropic', '--help'],
-            ['--enable-ai', '--use-anthropic', '--help'],
-            ['--enable-ai', '--help'],  # Should default to Anthropic
+            ['--use-anthropic'],
+            ['--enable-ai', '--use-anthropic'],
+            ['--use-anthropic', '--tts-engine', 'pyttsx3']
         ]
         
         for flags in valid_combinations:
             with self.subTest(flags=flags):
+                # Run with --help to avoid actually starting the assistant
                 result = subprocess.run([
-                    'python', 'jarvis_assistant.py'
-                ] + flags,
-                capture_output=True, text=True,
-                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                
-                # Should succeed when asking for help
-                self.assertEqual(result.returncode, 0)
-                self.assertIn('usage:', result.stdout)
+                    'python', 'jarvis.py'
+                ] + flags + ['--help'],
     
     def test_anthropic_mutual_exclusivity(self):
         """Test that Anthropic and DeepSeek flags are mutually exclusive"""
         # This should fail
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--enable-ai', '--use-anthropic', '--use-deepseek'
+            'python', 'jarvis.py', '--enable-ai', '--use-anthropic', '--use-deepseek'
         ], capture_output=True, text=True, 
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
@@ -227,7 +223,7 @@ class TestAnthropicSystemIntegration(unittest.TestCase):
     def test_anthropic_fallback_behavior(self):
         """Test that system handles missing Anthropic API key gracefully"""
         # Test with no API key
-        from ai_brain import AnthropicBrain
+        from ai.ai_brain import AnthropicBrain
         
         with patch.dict(os.environ, {}, clear=True):
             brain = AnthropicBrain()

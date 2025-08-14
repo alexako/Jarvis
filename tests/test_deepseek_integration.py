@@ -11,8 +11,8 @@ from unittest.mock import patch, MagicMock
 # Add the parent directory to Python path to import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ai_brain import DeepSeekBrain, BrainProvider, AIBrainManager
-from commands import create_ai_config
+from ai.ai_brain import DeepSeekBrain, BrainProvider, AIBrainManager
+from commands.commands import create_ai_config
 
 
 class TestDeepSeekIntegration(unittest.TestCase):

@@ -17,16 +17,16 @@ class TestAnthropicFlag(unittest.TestCase):
     def test_anthropic_flag_help_text(self):
         """Test that --use-anthropic flag appears in help text"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--help'
+            'python', 'jarvis.py', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertIn('--use-anthropic', result.stdout)
         self.assertIn('Use Anthropic Claude as primary AI provider', result.stdout)
     
-    def test_mutual_exclusivity_error_anthropic_first(self):
-        """Test that using both AI provider flags raises error (anthropic first)"""
+    def test_mutual_exclusivity_error_deepseek_first(self):
+        """Test that using both AI provider flags raises error (deepseek first)"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--enable-ai', '--use-anthropic', '--use-deepseek'
+            'python', 'jarvis.py', '--enable-ai', '--use-deepseek', '--use-anthropic'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertNotEqual(result.returncode, 0)
@@ -38,7 +38,7 @@ class TestAnthropicFlag(unittest.TestCase):
         """Test that --use-anthropic flag alone doesn't cause errors during parsing"""
         # Test just the help to ensure flag is recognized
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--use-anthropic', '--help'
+            'python', 'jarvis.py', '--use-anthropic', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertEqual(result.returncode, 0)
@@ -47,7 +47,7 @@ class TestAnthropicFlag(unittest.TestCase):
     def test_anthropic_flag_with_enable_ai(self):
         """Test that --use-anthropic flag works with --enable-ai"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--enable-ai', '--use-anthropic', '--help'
+            'python', 'jarvis.py', '--enable-ai', '--use-anthropic', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         self.assertEqual(result.returncode, 0)
@@ -81,7 +81,7 @@ class TestAnthropicConfig(unittest.TestCase):
         args.use_deepseek = False
         args.use_anthropic = True
         
-        # Test the logic from jarvis_assistant.py:190-193
+        # Test the logic from jarvis.py:190-193
         if args.use_deepseek:
             ai_provider_preference = "deepseek"
         elif args.use_anthropic:
@@ -125,10 +125,10 @@ class TestAnthropicConfig(unittest.TestCase):
 class TestAnthropicFlagBehavior(unittest.TestCase):
     """Test specific behaviors of the Anthropic flag"""
     
-    def test_anthropic_flag_redundancy(self):
+    def test_anthropic_flag_redundant_default(self):
         """Test that using --use-anthropic when it's already default doesn't cause issues"""
         result = subprocess.run([
-            'python', 'jarvis_assistant.py', '--enable-ai', '--use-anthropic', '--help'
+            'python', 'jarvis.py', '--enable-ai', '--use-anthropic', '--help'
         ], capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         # Should work fine since anthropic is default anyway

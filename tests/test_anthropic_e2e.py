@@ -197,7 +197,7 @@ class TestAnthropicSystemIntegration(unittest.TestCase):
         """Test that Anthropic can be imported and basic functionality works"""
         # Test that we can import the brain classes
         try:
-            from ai_brain import AnthropicBrain, BrainProvider
+            from src.ai.ai_brain import AnthropicBrain, BrainProvider
             
             # Test that Anthropic brain can be created
             brain = AnthropicBrain(api_key=self.api_key)
@@ -216,7 +216,7 @@ class TestAnthropicSystemIntegration(unittest.TestCase):
     @unittest.skipIf(not os.getenv('ANTHROPIC_API_KEY'), "ANTHROPIC_API_KEY not available")
     def test_anthropic_provider_enum(self):
         """Test that Anthropic provider enum is correctly defined"""
-        from ai_brain import BrainProvider
+        from src.ai.ai_brain import BrainProvider
         
         # Check that ANTHROPIC is defined
         self.assertTrue(hasattr(BrainProvider, 'ANTHROPIC'))
@@ -225,7 +225,7 @@ class TestAnthropicSystemIntegration(unittest.TestCase):
     def test_anthropic_fallback_behavior(self):
         """Test that system handles missing Anthropic API key gracefully"""
         # Test with no API key
-        from ai.ai_brain import AnthropicBrain
+        from src.ai.ai_brain import AnthropicBrain
         
         with patch.dict(os.environ, {}, clear=True):
             brain = AnthropicBrain()
@@ -246,7 +246,7 @@ class TestAnthropicPerformance(unittest.TestCase):
     
     def test_anthropic_response_time(self):
         """Test that Anthropic responds within reasonable time"""
-        from ai_brain import AnthropicBrain
+        from src.ai.ai_brain import AnthropicBrain
         
         brain = AnthropicBrain(api_key=self.api_key)
         

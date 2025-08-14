@@ -52,7 +52,7 @@ class TestDeepSeekIntegration(unittest.TestCase):
         custom_brain = DeepSeekBrain(api_key=self.api_key, model="custom-model")
         self.assertEqual(custom_brain.model_name, "custom-model")
     
-    @patch('ai_brain.DeepSeekBrain.process_request')
+    @patch('ai.ai_brain.DeepSeekBrain.process_request')
     def test_deepseek_simple_query(self, mock_process_request):
         """Test that DeepSeek brain can handle a simple query"""
         # Mock the API response
@@ -64,7 +64,7 @@ class TestDeepSeekIntegration(unittest.TestCase):
         self.assertEqual(response, "Hello! How can I help you today?")
         mock_process_request.assert_called_once_with("Hello", None)
     
-    @patch('ai_brain.DeepSeekBrain.process_request')
+    @patch('ai.ai_brain.DeepSeekBrain.process_request')
     def test_deepseek_error_handling(self, mock_process_request):
         """Test that DeepSeek brain handles API errors gracefully"""
         # Mock an API error

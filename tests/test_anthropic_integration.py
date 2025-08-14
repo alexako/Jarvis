@@ -52,7 +52,7 @@ class TestAnthropicIntegration(unittest.TestCase):
         custom_brain = AnthropicBrain(api_key=self.api_key, model="claude-3-sonnet-20240229")
         self.assertEqual(custom_brain.model_name, "claude-3-sonnet-20240229")
     
-    @patch('ai_brain.AnthropicBrain.process_request')
+    @patch('ai.ai_brain.AnthropicBrain.process_request')
     def test_anthropic_simple_query(self, mock_process_request):
         """Test that Anthropic brain can handle a simple query"""
         # Mock the API response
@@ -64,7 +64,7 @@ class TestAnthropicIntegration(unittest.TestCase):
         self.assertEqual(response, "Good day, sir! How may I assist you?")
         mock_process_request.assert_called_once_with("Hello", None)
     
-    @patch('ai_brain.AnthropicBrain.process_request')
+    @patch('ai.ai_brain.AnthropicBrain.process_request')
     def test_anthropic_error_handling(self, mock_process_request):
         """Test that Anthropic brain handles API errors gracefully"""
         # Mock an API error

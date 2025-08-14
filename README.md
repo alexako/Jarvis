@@ -14,24 +14,24 @@ Jarvis consists of two main components:
 ### Basic Voice Assistant
 ```bash
 # Start the complete voice assistant
-python jarvis_assistant.py
+python jarvis.py
 
 # With AI features enabled (requires API keys)
-python jarvis_assistant.py --enable-ai
+python jarvis.py --enable-ai
 
 # Use specific AI provider
-python jarvis_assistant.py --enable-ai --use-deepseek
-python jarvis_assistant.py --enable-ai --use-anthropic  # default
+python jarvis.py --enable-ai --use-deepseek
+python jarvis.py --enable-ai --use-anthropic  # default
 
 # Use local AI only (private, offline, no API keys required)
-python jarvis_assistant.py --use-local
+python jarvis.py --use-local
 
 # Use enhanced neural TTS for natural voice
-python jarvis_assistant.py --tts-engine piper
+python jarvis.py --tts-engine piper
 
 # Use different TTS engines
-python jarvis_assistant.py --tts-engine pyttsx3
-python jarvis_assistant.py --tts-engine system
+python jarvis.py --tts-engine pyttsx3
+python jarvis.py --tts-engine system
 ```
 
 ### Demo Mode
@@ -245,7 +245,7 @@ echo "Good afternoon, sir." | piper -m ~/.local/share/piper/models/en_GB-alan-me
 
 ### Basic Voice Interaction
 ```
-1. Start: python jarvis_assistant.py
+1. Start: python jarvis.py
 2. Activate: Say "Jarvis"
 3. Jarvis: "Yes, sir. How may I assist you?"
 4. Command: "What time is it?"
@@ -255,7 +255,7 @@ echo "Good afternoon, sir." | piper -m ~/.local/share/piper/models/en_GB-alan-me
 ### AI-Powered Responses
 ```bash
 # Start with AI enabled
-python jarvis_assistant.py --enable-ai --use-deepseek
+python jarvis.py --enable-ai --use-deepseek
 
 # Say "Jarvis" then ask complex questions
 User: "Explain quantum computing"
@@ -274,10 +274,12 @@ Jarvis: "Why don't scientists trust atoms, sir? Because they make up everything.
 ## 🏗️ Architecture
 
 ### Core Components
-- `jarvis_assistant.py` - Main voice assistant with AI integration
-- `commands.py` - Centralized command processing (54 commands)
-- `ai_brain.py` - AI provider management and brain classes
-- `speech_analysis/` - STT and TTS engine implementations
+- `src/core/jarvis_assistant.py` - Main voice assistant with AI integration
+- `src/commands/commands.py` - Centralized command processing (54 commands)
+- `src/ai/ai_brain.py` - AI provider management and brain classes
+- `src/audio/` - STT and TTS engine implementations
+- `src/context/` - Context and memory management
+- `src/utils/` - Utility functions and configuration management
 
 ### AI Brain System
 - **AnthropicBrain**: Claude integration with Jarvis personality

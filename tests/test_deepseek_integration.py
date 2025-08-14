@@ -62,7 +62,7 @@ class TestDeepSeekIntegration(unittest.TestCase):
         response = brain.process_request("Hello")
         
         self.assertEqual(response, "Hello! How can I help you today?")
-        mock_process_request.assert_called_once_with("Hello", None)
+        mock_process_request.assert_called_once_with("Hello")
     
     @patch('src.ai.ai_brain.DeepSeekBrain.process_request')
     def test_deepseek_error_handling(self, mock_process_request):

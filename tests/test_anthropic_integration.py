@@ -62,7 +62,7 @@ class TestAnthropicIntegration(unittest.TestCase):
         response = brain.process_request("Hello")
         
         self.assertEqual(response, "Good day, sir! How may I assist you?")
-        mock_process_request.assert_called_once_with("Hello", None)
+        mock_process_request.assert_called_once_with("Hello")
     
     @patch('src.ai.ai_brain.AnthropicBrain.process_request')
     def test_anthropic_error_handling(self, mock_process_request):

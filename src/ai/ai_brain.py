@@ -15,6 +15,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
+logger = logging.getLogger(__name__)
+
 class BrainProvider(Enum):
     """Available AI brain providers"""
     ANTHROPIC = "anthropic"

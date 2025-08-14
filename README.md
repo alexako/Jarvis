@@ -2,6 +2,13 @@
 
 A comprehensive voice assistant system combining Speech-to-Text (STT), Text-to-Speech (TTS), and AI-powered responses, inspired by the Jarvis AI from Iron Man.
 
+## 🧠 Architecture Overview
+
+Jarvis consists of two main components:
+
+1. **Jarvis Core** (this repository) - The central AI brain that processes requests and generates responses
+2. **Argus** - The "eyes and ears" of the system, handling audio/video capture and basic interaction on edge devices like Raspberry Pi
+
 ## 🚀 Quick Start
 
 ### Basic Voice Assistant
@@ -45,6 +52,28 @@ python quick_test.py
 # Simple test runner
 ./test.sh
 ```
+
+## 🎯 About Argus
+
+**Argus** is the codename for the distributed "eyes and ears" component of the Jarvis system. It's designed to run on edge devices like Raspberry Pi equipped with microphones and cameras, serving as the sensory input layer for Jarvis.
+
+### Role of Argus:
+- **Audio Capture**: Listens for voice commands through USB microphones
+- **Voice Activity Detection**: Detects when someone is speaking to avoid constant processing
+- **Basic Command Processing**: Handles simple, pre-programmed responses locally
+- **Video Capture**: Captures video from AI cameras for motion detection and security
+- **Network Communication**: Sends complex requests to the main Jarvis server for processing
+- **Response Playback**: Converts text responses to speech and plays them through speakers
+
+### Key Features of Argus:
+- Lightweight design optimized for Raspberry Pi
+- Offline capability for basic functions
+- Modular architecture for easy extension
+- Text-to-Speech using pyttsx3 for local responses
+- Motion detection for security applications
+- Secure communication with Jarvis core
+
+The Argus component can be found in its own repository: [github.com/alexako/Argus](https://github.com/alexako/Argus)
 
 ## ✨ Features
 
@@ -309,6 +338,19 @@ python tests/test_anthropic_flag.py
 - **Full Test Suite**: ~45-60 seconds
 - **Memory Usage**: ~100MB during testing
 - **API Response**: <30 seconds for AI queries
+
+## 📋 TODO
+
+### High Priority
+- [ ] **Fix providers endpoint** - Currently only returning Anthropic and DeepSeek, missing local models
+- [ ] **UI version compatibility warning** - Address version compatibility warnings in the UI interface
+- [ ] **Dynamic local model detection** - Enhance providers endpoint to include available Ollama models (create script to check downloaded models)
+
+### Future Enhancements
+- [ ] Add real-time model switching capability
+- [ ] Implement model performance monitoring
+- [ ] Add support for additional local model providers
+- [ ] Create automated model management system
 
 ## 🎉 Status: FULLY OPERATIONAL
 

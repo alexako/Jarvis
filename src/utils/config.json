@@ -1,0 +1,117 @@
+{
+  "performance_modes": {
+    "fast": {
+      "audio": {
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_size": 2048,
+        "format": "paInt16",
+        "silence_threshold": 200.0,
+        "silence_duration": 2.0,
+        "max_recording_time": 15.0
+      },
+      "stt": {
+        "default_engine": "whisper",
+        "whisper": {
+          "default_model": "tiny.en"
+        }
+      }
+    },
+    "balanced": {
+      "audio": {
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_size": 1024,
+        "format": "paInt16",
+        "silence_threshold": 150.0,
+        "silence_duration": 2.5,
+        "max_recording_time": 20.0
+      },
+      "stt": {
+        "default_engine": "whisper",
+        "whisper": {
+          "default_model": "base.en"
+        }
+      }
+    },
+    "accurate": {
+      "audio": {
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_size": 512,
+        "format": "paInt16",
+        "silence_threshold": 120.0,
+        "silence_duration": 3.0,
+        "max_recording_time": 30.0
+      },
+      "stt": {
+        "default_engine": "whisper",
+        "whisper": {
+          "default_model": "base.en"
+        }
+      }
+    }
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "channels": 2,
+    "chunk_size": 1024,
+    "format": "paInt16",
+    "silence_threshold": 500.0,
+    "silence_duration": 2.5,
+    "max_recording_time": 20.0,
+    "input_device_index": 3
+  },
+  "stt": {
+    "default_engine": "whisper",
+    "whisper": {
+      "default_model": "tiny.en"
+    },
+    "vosk": {
+      "default_model": "vosk-model-small-en-us-0.15"
+    }
+  },
+  "wake_words": [
+    "jarvis",
+    "hey jarvis"
+  ],
+  "debug": {
+    "audio_processing": false,
+    "rms_logging_interval": 500
+  },
+  "optimizations": {
+    "gpu_acceleration": true,
+    "smart_silence_detection": true,
+    "non_blocking_tts": true,
+    "audio_compression": false
+  },
+  "tts": {
+    "default_engine": "piper",
+    "speech_rate_wpm": 150,
+    "timeout_buffer_factor": 0.5,
+    "min_timeout_seconds": 30,
+    "max_timeout_seconds": 300,
+    "piper": {
+      "model_path": "~/.local/share/piper/models/en_GB-alan-medium.onnx",
+      "sentence_silence": 0.3,
+      "volume": 1.0,
+      "speed": 1.0
+    }
+  },
+  "local_llm": {
+    "enabled": true,
+    "model": "phi3.5:3.8b",
+    "timeout": 20,
+    "max_context_length": 4096,
+    "temperature": 0.7,
+    "ollama_url": "http://localhost:11434"
+  },
+  "speaker_identification": {
+    "enabled": true,
+    "confidence_threshold": 0.40,
+    "enrollment_threshold": 3,
+    "similarity_metric": "cosine",
+    "auto_enrollment": false,
+    "backend_preference": "speechbrain"
+  }
+}

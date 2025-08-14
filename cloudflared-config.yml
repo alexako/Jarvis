@@ -1,0 +1,12 @@
+tunnel: e2cdb896-1e6b-4fca-9206-e124ccc31fa8
+credentials-file: /Users/alex/.cloudflared/e2cdb896-1e6b-4fca-9206-e124ccc31fa8.json
+
+ingress:
+  - hostname: api.alexako.com
+    service: http://localhost:8000
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      # Allow all headers to pass through
+      httpHostHeader: api.alexako.com
+  - service: http_status:404

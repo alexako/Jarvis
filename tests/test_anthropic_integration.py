@@ -11,8 +11,8 @@ from unittest.mock import patch, MagicMock
 # Add the parent directory to Python path to import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ai.ai_brain import AnthropicBrain, BrainProvider, AIBrainManager
-from commands.commands import create_ai_config
+from src.ai.ai_brain import AnthropicBrain, BrainProvider, AIBrainManager
+from src.commands.commands import create_ai_config
 
 
 class TestAnthropicIntegration(unittest.TestCase):

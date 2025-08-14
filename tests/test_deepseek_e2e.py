@@ -144,7 +144,7 @@ class TestDeepSeekCommandLineIntegration(unittest.TestCase):
         for flags in invalid_combinations:
             with self.subTest(flags=flags):
                 result = subprocess.run([
-                    'python', 'jarvis_assistant.py'
+                    'python', 'jarvis.py'
                 ] + flags, 
                 capture_output=True, text=True, 
                 cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -187,7 +187,7 @@ class TestDeepSeekSystemIntegration(unittest.TestCase):
         """Test that DeepSeek can be imported and basic functionality works"""
         # Test that we can import the brain classes
         try:
-            from ai.ai_brain import DeepSeekBrain, BrainProvider
+            from src.ai.ai_brain import DeepSeekBrain, BrainProvider
             
             # Test that DeepSeek brain can be created
             brain = DeepSeekBrain(api_key=self.api_key)

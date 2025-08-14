@@ -166,6 +166,8 @@ class TestAnthropicCommandLineIntegration(unittest.TestCase):
                 result = subprocess.run([
                     'python', 'jarvis.py'
                 ] + flags + ['--help'],
+                capture_output=True, text=True,
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
     def test_anthropic_mutual_exclusivity(self):
         """Test that Anthropic and DeepSeek flags are mutually exclusive"""

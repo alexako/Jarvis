@@ -915,8 +915,10 @@ def create_ai_config(
         secondary_priority = 3
     else:
         local_priority = 3
-        primary_priority = 1 if prefer_anthropic else 2
-        secondary_priority = 2 if prefer_anthropic else 1
+        # When prefer_anthropic is True, Anthropic is primary (priority 1)
+        # When prefer_anthropic is False, DeepSeek is primary (priority 1)
+        primary_priority = 1
+        secondary_priority = 2
     
     return {
         "providers": {

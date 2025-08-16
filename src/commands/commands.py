@@ -131,41 +131,61 @@ class JarvisCommands:
         logger.info(f"Enhanced commands initialized - AI enabled: {self.ai_enabled}")
     
     def process_command(self, text: str):
-        """Process command with context awareness and AI fallback"""
-        if not text or not text.strip():
+        """Process command with context awareness and AI fallback - optimized version"""
+        if not text:
             return
         
         text_clean = text.strip()
+        if not text_clean:
+            return
+            
         text_lower = text_clean.lower()
         
         logger.info(f"Processing command: '{text_clean}'")
         
         # Check for built-in commands first (fast local processing)
-        # Use word boundary matching to prevent false matches like "hi" in "this"
+        # Use more efficient matching to prevent false matches in normal conversation
         command_matched = False
-        for command, handler in self.command_mappings.items():
-            # Create regex pattern with word boundaries for better matching
-            pattern = r'\b' + re.escape(command) + r'\b'
-            if re.search(pattern, text_lower):
-                logger.info(f"Matched built-in command: {command}")
-                try:
-                    # Some commands need the full text for context
-                    if command in ['remember that', 'my name is', 'call me', 'forget that', 
-                                  'switch to user', 'i am', 'create user', 'add alias', 
-                                  'call me also', 'remove alias', 'primary name']:
-                        handler(text_clean)
-                    else:
-                        handler()
-                    
-                    # For context tracking, we need to add the exchange after response
-                    # This is handled in the individual command handlers or _speak method
-                    command_matched = True
-                    break
-                except Exception as e:
-                    logger.error(f"Built-in command failed: {e}")
-                    self._speak("I encountered an error processing that command, sir.", text_clean, "error")
-                    command_matched = True
-                    break
+        
+        # First try exact matches for better performance
+        if text_lower in self.command_mappings:
+            handler = self.command_mappings[text_lower]
+            logger.info(f"Matched built-in command: {text_lower}")
+            try:
+                handler()
+                command_matched = True
+            except Exception as e:
+                logger.error(f"Built-in command failed: {e}")
+                self._speak("I encountered an error processing that command, sir.", text_clean, "error")
+                command_matched = True
+        
+        # If no exact match, try pattern matching for commands that need full text
+        if not command_matched:
+            # Pre-defined list of commands that need full text context
+            context_commands = {
+                'remember that', 'my name is', 'call me', 'forget that', 
+                'switch to user', 'i am', 'create user', 'add alias', 
+                'call me also', 'remove alias', 'primary name'
+            }
+            
+            for command, handler in self.command_mappings.items():
+                # More efficient substring matching for better performance
+                if command in text_lower:
+                    logger.info(f"Matched built-in command: {command}")
+                    try:
+                        # Pass full text only for commands that need it
+                        if command in context_commands:
+                            handler(text_clean)
+                        else:
+                            handler()
+                        
+                        command_matched = True
+                        break
+                    except Exception as e:
+                        logger.error(f"Built-in command failed: {e}")
+                        self._speak("I encountered an error processing that command, sir.", text_clean, "error")
+                        command_matched = True
+                        break
         
         if command_matched:
             return

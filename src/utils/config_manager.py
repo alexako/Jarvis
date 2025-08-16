@@ -41,7 +41,7 @@ class ConfigManager:
     
     def get(self, key_path: str, default: Any = None) -> Any:
         """
-        Get configuration value using dot notation
+        Get configuration value using dot notation - optimized version
         
         Args:
             key_path: Dot-separated path to config value (e.g., 'audio.sample_rate')
@@ -53,10 +53,15 @@ class ConfigManager:
         if self._config is None:
             self.load_config()
         
+        # Try direct access first for common keys
+        if '.' not in key_path:
+            return self._config.get(key_path, default)
+        
         keys = key_path.split('.')
         value = self._config
         
         try:
+            # More efficient key traversal
             for key in keys:
                 value = value[key]
             return value

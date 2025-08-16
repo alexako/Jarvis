@@ -715,23 +715,39 @@ class JarvisContext:
     def handle_pronouns_and_references(self, text: str) -> str:
         """
         Handle pronouns and contextual references in user input
-        Returns enhanced text with context substitutions
+        Returns enhanced text with context substitutions - optimized version
         """
+        if not text:
+            return text
+            
         text_lower = text.lower()
+        text_len = len(text)
+        
+        # Quick check for pronouns to avoid unnecessary processing
+        has_pronoun = False
+        pronouns = ['it', 'that', 'this', 'them']
+        for pronoun in pronouns:
+            if pronoun in text_lower:
+                has_pronoun = True
+                break
+        
+        if not has_pronoun:
+            return text
+        
         recent_context = self.get_recent_context(2)
         
         if not recent_context:
             return text
         
-        # Simple pronoun handling
-        if any(pronoun in text_lower for pronoun in ['it', 'that', 'this', 'them']):
-            # Get the last topic or subject mentioned
-            last_exchange = recent_context[-1]
-            if last_exchange.get('topic'):
-                # Replace contextual references with the topic
-                enhanced_text = f"{text} (referring to: {last_exchange['topic']})"
-                logger.debug(f"Enhanced input with context: {enhanced_text}")
-                return enhanced_text
+        # Simple pronoun handling - optimized version
+        # Get the last topic or subject mentioned
+        last_exchange = recent_context[-1]
+        topic = last_exchange.get('topic')
+        if topic:
+            # Replace contextual references with the topic
+            enhanced_text = f"{text} (referring to: {topic})"
+            logger.debug(f"Enhanced input with context: {enhanced_text}")
+            return enhanced_text
         
         return text
     

@@ -13,6 +13,8 @@ Features:
 
 __version__ = "1.5.0"
 
+import sys
+import os
 import asyncio
 import logging
 import time
@@ -21,6 +23,9 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 from io import BytesIO
+
+# Add the src directory to the path so we can import modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 # FastAPI and dependencies
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, UploadFile, File
@@ -31,10 +36,10 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 # Jarvis components
-from ai_brain import AIBrainManager, BrainProvider
-from speech_analysis.tts import JarvisTTS
-from commands import JarvisCommands, create_ai_config
-from jarvis_context import create_jarvis_context
+from ai.ai_brain import AIBrainManager, BrainProvider
+from audio.speech_analysis.tts import JarvisTTS
+from commands.commands import JarvisCommands, create_ai_config
+from context.jarvis_context import create_jarvis_context
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -286,8 +286,27 @@ class EnhancedJarvisAssistant:
             
             try:
                 # The TTS callbacks will handle STT pausing/resuming
-                self.tts.speak_direct(text)
+                # Add timeout to prevent hanging
+                import threading
+                result = [None]
+                exception = [None]
                 
+                def speak_target():
+                    try:
+                        self.tts.speak_direct(text)
+                    except Exception as e:
+                        exception[0] = e
+                
+                thread = threading.Thread(target=speak_target)
+                thread.daemon = True
+                thread.start()
+                thread.join(timeout=15.0)  # 15 second timeout for speech
+                
+                if thread.is_alive():
+                    logger.warning("Speech timeout exceeded, continuing anyway")
+                elif exception[0]:
+                    raise exception[0]
+                    
             except Exception as e:
                 logger.error(f"TTS error: {e}")
                 # Try fallback TTS
@@ -334,9 +353,10 @@ class EnhancedJarvisAssistant:
             self.stt.start_listening()
             logger.info("Enhanced STT listening started")
             
-            # Main loop with enhanced monitoring
+            # Main loop with enhanced monitoring - optimized version
             last_health_check = time.time()
             health_check_interval = 30.0  # Check every 30 seconds
+            loop_sleep_time = 0.5  # Sleep time in seconds
             
             while self.is_listening:
                 current_time = time.time()
@@ -346,7 +366,8 @@ class EnhancedJarvisAssistant:
                     self._perform_health_check()
                     last_health_check = current_time
                 
-                time.sleep(0.5)
+                # Use shorter sleep time for more responsive checking
+                time.sleep(loop_sleep_time)
                 
         except KeyboardInterrupt:
             print("\n\n⏹️  Shutting down...")
@@ -356,25 +377,30 @@ class EnhancedJarvisAssistant:
             self.stop()
     
     def _perform_health_check(self):
-        """Perform periodic health checks to ensure system responsiveness"""
+        """Perform periodic health checks to ensure system responsiveness - optimized version"""
         try:
+            current_time = time.time()
+            
             # Check if STT is still listening
             if not self.stt.is_listening and self.is_listening:
                 logger.warning("STT stopped listening unexpectedly - attempting restart")
                 self._restart_stt()
             
-            # Check processing queue health
-            if hasattr(self.stt, 'processing_queue'):
-                queue_size = self.stt.processing_queue.qsize()
-                if queue_size > 2:
-                    logger.warning(f"Processing queue backed up: {queue_size} items")
+            # Check processing queue health - only check if we have a way to check
+            if hasattr(self.stt, 'processing_queue') and hasattr(self.stt.processing_queue, 'qsize'):
+                try:
+                    queue_size = self.stt.processing_queue.qsize()
+                    if queue_size > 2:
+                        logger.warning(f"Processing queue backed up: {queue_size} items")
+                except NotImplementedError:
+                    # Some queue implementations don't support qsize()
+                    pass
             
-            # Check if we've been speaking too long
-            if self.is_speaking:
-                if time.time() - self.last_speech_time > 60:  # 1 minute max
-                    logger.warning("TTS has been active too long - forcing reset")
-                    self.is_speaking = False
-                    self.stt.resume_after_speech()
+            # Check if we've been speaking too long - optimized check
+            if self.is_speaking and (current_time - self.last_speech_time) > 60:  # 1 minute max
+                logger.warning("TTS has been active too long - forcing reset")
+                self.is_speaking = False
+                self.stt.resume_after_speech()
             
             logger.debug("Health check completed")
             

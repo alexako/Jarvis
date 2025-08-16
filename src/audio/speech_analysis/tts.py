@@ -65,7 +65,7 @@ class AudioPlayer:
             self.playback_thread.start()
 
     def _playback_worker(self):
-        """Worker thread for audio playback"""
+        """Worker thread for audio playback - optimized version"""
         while True:
             try:
                 audio_data = self.playback_queue.get(timeout=1.0)
@@ -74,26 +74,35 @@ class AudioPlayer:
                     
                 self.is_playing = True
                 
-                # Open stream for playback
-                stream = self.audio.open(
-                    format=self.config.format,
-                    channels=self.config.channels,
-                    rate=self.config.sample_rate,
-                    output=True,
-                    frames_per_buffer=self.config.chunk_size
-                )
-                
-                # Play audio in chunks
-                for i in range(0, len(audio_data), self.config.chunk_size):
-                    chunk = audio_data[i:i + self.config.chunk_size]
-                    stream.write(chunk)
-                
-                stream.stop_stream()
-                stream.close()
-                
-                self.is_playing = False
-                self.playback_queue.task_done()
-                
+                try:
+                    # Open stream for playback
+                    stream = self.audio.open(
+                        format=self.config.format,
+                        channels=self.config.channels,
+                        rate=self.config.sample_rate,
+                        output=True,
+                        frames_per_buffer=self.config.chunk_size
+                    )
+                    
+                    # Play audio in chunks - optimized version
+                    chunk_size = self.config.chunk_size
+                    data_length = len(audio_data)
+                    
+                    # More efficient chunk processing
+                    for i in range(0, data_length, chunk_size):
+                        end_index = min(i + chunk_size, data_length)
+                        chunk = audio_data[i:end_index]
+                        stream.write(chunk)
+                    
+                    stream.stop_stream()
+                    stream.close()
+                    
+                except Exception as e:
+                    logger.error(f"Audio stream error: {e}")
+                finally:
+                    self.is_playing = False
+                    self.playback_queue.task_done()
+                    
             except queue.Empty:
                 continue
             except Exception as e:
@@ -542,15 +551,14 @@ class JarvisTTS:
             self._speak_blocking(text, context, use_personality)
 
     def _speak_blocking(self, text: str, context: str = "general", use_personality: bool = True):
-        """Internal blocking speech implementation"""
+        """Internal blocking speech implementation - optimized version"""
         if not text:
             return
 
-        # Enhance text with personality
+        # Enhance text with personality - optimized version
+        enhanced_text = text
         if use_personality and self.config.jarvis_personality:
             enhanced_text = self.personality.enhance_response(text, context)
-        else:
-            enhanced_text = text
 
         logger.info(f"Speaking: '{enhanced_text}'")
 
@@ -564,20 +572,30 @@ class JarvisTTS:
                 # Use system say directly
                 self._fallback_system_say(enhanced_text)
             else:
-                # Synthesize speech with other engines
+                # Synthesize speech with other engines - optimized version
+                audio_data = None
                 if isinstance(self.tts_engine, CoquiTTS) and self.jarvis_voice_path:
                     # Use voice cloning if available
                     audio_data = self.tts_engine.clone_voice(enhanced_text, self.jarvis_voice_path)
                 else:
                     audio_data = self.tts_engine.synthesize(enhanced_text)
 
-                if audio_data:
+                if audio_data and len(audio_data) > 0:
                     # Play audio
                     self.player.play_audio_data(audio_data)
 
-                    # Wait for playback to complete
-                    while self.player.is_playing:
-                        time.sleep(0.1)
+                    # Wait for playback to complete with timeout - optimized version
+                    start_time = time.time()
+                    timeout = 30.0  # 30 second timeout
+                    check_interval = 0.01  # 10ms intervals for more responsive checking
+                    
+                    while self.player.is_playing and (time.time() - start_time < timeout):
+                        time.sleep(check_interval)
+                    
+                    # If we timed out, force stop
+                    if self.player.is_playing:
+                        logger.warning("TTS playback timed out, forcing stop")
+                        self.player.stop_playback()
 
         except Exception as e:
             logger.error(f"Speech synthesis failed: {e}")
@@ -594,17 +612,41 @@ class JarvisTTS:
 
     def speak_direct(self, text: str):
         """Speak text directly without personality enhancement"""
+        if not text:
+            return
+            
         if self.tts_engine is None:  # System TTS
             self._fallback_system_say(text)
         elif isinstance(self.tts_engine, PyttsxTTS):
-            # Try pyttsx3 first
+            # Try pyttsx3 first with timeout
             try:
-                self.tts_engine.speak_directly(text)
+                # Run in a separate thread with timeout
+                import threading
+                result = [None]
+                exception = [None]
+                
+                def speak_target():
+                    try:
+                        self.tts_engine.speak_directly(text)
+                    except Exception as e:
+                        exception[0] = e
+                
+                thread = threading.Thread(target=speak_target)
+                thread.daemon = True
+                thread.start()
+                thread.join(timeout=10.0)  # 10 second timeout
+                
+                if thread.is_alive():
+                    logger.warning("pyttsx3 speech timeout, terminating")
+                    # Note: We can't actually terminate the thread, but we can log the timeout
+                elif exception[0]:
+                    raise exception[0]
+                    
             except Exception as e:
                 logger.warning(f"pyttsx3 failed, using system say: {e}")
                 self._fallback_system_say(text)
         elif isinstance(self.tts_engine, PiperTTS):
-            # Try Piper TTS
+            # Try Piper TTS with timeout
             try:
                 self.tts_engine.speak_direct(text)
             except Exception as e:

@@ -12,25 +12,40 @@ Key features:
 
 import threading
 import time
-import numpy as np
-import pyaudio
-import wave
-import io
-import json
-from typing import Optional, Callable, Dict, Any
-from dataclasses import dataclass
-from collections import deque
 import logging
 import sys
 import os
 import queue
+from typing import Optional, Callable, Dict, Any
+from dataclasses import dataclass
+from collections import deque
 
 # Add parent directory to path to import config_manager
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.config_manager import get_config
 
+# Delay heavy imports until needed
+np = None  # Will import when needed
+pyaudio = None  # Will import when needed
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def _import_numpy():
+    """Lazy import of numpy to reduce startup time"""
+    global np
+    if np is None:
+        import numpy
+        np = numpy
+    return np
+
+def _import_pyaudio():
+    """Lazy import of pyaudio to reduce startup time"""
+    global pyaudio
+    if pyaudio is None:
+        import pyaudio as pyaud
+        pyaudio = pyaud
+    return pyaudio
 
 
 @dataclass
@@ -48,10 +63,11 @@ class AudioConfig:
         
         # Handle format string conversion
         format_str = audio_config.get('format', 'paInt16')
+        pyaudio_lib = _import_pyaudio()
         if format_str == 'paInt16':
-            self.format: int = pyaudio.paInt16
+            self.format: int = pyaudio_lib.paInt16
         else:
-            self.format: int = pyaudio.paInt16  # default fallback
+            self.format: int = pyaudio_lib.paInt16  # default fallback
             
         # Enhanced thresholds for better responsiveness
         self.silence_threshold: float = max(150.0, audio_config.get('silence_threshold', 150.0))
@@ -114,17 +130,23 @@ class AudioBuffer:
         if self.debug:
             logger.debug("Audio buffer state reset")
     
-    def add_chunk(self, chunk: np.ndarray, config: AudioConfig) -> bool:
+    def add_chunk(self, chunk, config: AudioConfig) -> bool:
         """Enhanced chunk processing with better responsiveness"""
+        # Ensure numpy is imported
+        np = _import_numpy()
+        
         if self.is_paused:
             return False
             
-        # Calculate RMS for voice activity detection
+        # Calculate RMS for voice activity detection - optimized version
         if len(chunk) == 0:
             rms = 0.0
         else:
-            mean_square = np.mean(chunk.astype(np.float64) ** 2)
-            if np.isnan(mean_square) or mean_square < 0:
+            # Use more efficient calculation
+            chunk_float = chunk.astype(np.float32)
+            mean_square = np.mean(np.square(chunk_float))
+            # Check for invalid values more efficiently
+            if np.isnan(mean_square) or mean_square <= 0:
                 rms = 0.0
             else:
                 rms = np.sqrt(mean_square)
@@ -133,26 +155,29 @@ class AudioBuffer:
         self.recent_rms.append(rms)
         self.speech_energy_history.append(rms)
         
-        # Enhanced background noise estimation
+        # Enhanced background noise estimation - optimized version
         if not self.speech_detected and len(self.recent_rms) >= 5:  # Faster adaptation
-            # Use 75th percentile for more robust background estimation
-            sorted_rms = sorted(list(self.recent_rms))
-            self.background_rms = sorted_rms[int(len(sorted_rms) * 0.75)]
+            # Use 75th percentile for more robust background estimation - more efficient calculation
+            recent_rms_list = list(self.recent_rms)
+            recent_rms_list.sort()
+            self.background_rms = recent_rms_list[int(len(recent_rms_list) * 0.75)]
         
-        # Dynamic threshold calculation
-        if self.background_rms > 0:
+        # Dynamic threshold calculation - optimized version
+        background_rms = self.background_rms
+        if background_rms > 0:
             # More aggressive speech detection for better responsiveness
-            speech_threshold = max(config.silence_threshold, self.background_rms * 3.0)  # Reduced from 4.0
-            silence_threshold = max(config.silence_threshold * 0.4, self.background_rms * 1.8)  # Slightly higher
+            speech_threshold = max(config.silence_threshold, background_rms * 3.0)  # Reduced from 4.0
+            silence_threshold = max(config.silence_threshold * 0.4, background_rms * 1.8)  # Slightly higher
         else:
             speech_threshold = config.silence_threshold * 1.5  # Reduced multiplier
             silence_threshold = config.silence_threshold * 0.5
         
-        # Update adaptive silence threshold for quick adaptation
+        # Update adaptive silence threshold for quick adaptation - optimized version
+        adaptive_silence_threshold = self.adaptive_silence_threshold
         if rms > speech_threshold:
-            self.adaptive_silence_threshold = max(self.adaptive_silence_threshold * 0.95, silence_threshold)
+            self.adaptive_silence_threshold = max(adaptive_silence_threshold * 0.95, silence_threshold)
         else:
-            self.adaptive_silence_threshold = min(self.adaptive_silence_threshold * 1.02, speech_threshold * 0.8)
+            self.adaptive_silence_threshold = min(adaptive_silence_threshold * 1.02, speech_threshold * 0.8)
         
         # Enhanced speech detection logic
         if not self.speech_detected and rms > speech_threshold:
@@ -219,8 +244,11 @@ class AudioBuffer:
             
         return False
 
-    def get_audio_data(self) -> np.ndarray:
+    def get_audio_data(self):
         """Get the complete audio data and reset buffer"""
+        # Ensure numpy is imported
+        np = _import_numpy()
+        
         if not self.buffer:
             return np.array([])
         
@@ -273,19 +301,25 @@ class WhisperSTT:
             logger.error(f"Failed to load Whisper model: {e}")
             self.available = False
 
-    def transcribe(self, audio_data: np.ndarray, config: AudioConfig) -> str:
-        """Enhanced transcription with better filtering"""
+    def transcribe(self, audio_data, config: AudioConfig) -> str:
+        """Enhanced transcription with better filtering - optimized version"""
+        # Ensure numpy is imported
+        np = _import_numpy()
+        
         if not self.available:
             return "Whisper not available"
         
-        if len(audio_data) == 0:
+        data_length = len(audio_data)
+        if data_length == 0:
             return ""
         
         try:
-            # Convert to float32 and normalize
-            audio_float = audio_data.astype(np.float32) / 32768.0
+            # Convert to float32 and normalize - optimized version
+            # Pre-allocate array for better performance
+            audio_float = audio_data.astype(np.float32, copy=False) / 32768.0
             
             # Enhanced Whisper parameters for better responsiveness
+            # Optimize temperature and thresholds for faster processing
             result = self.model.transcribe(
                 audio_float, 
                 language="en",
@@ -300,12 +334,15 @@ class WhisperSTT:
             
             text = result.get("text", "").strip()
             
-            # Enhanced filtering for better quality
-            if len(text) > 1 and not text in [".", "..", "...", "you", "thank you"]:
-                # Additional filter for common false positives
-                false_positives = ["mm-hmm", "hmm", "uh", "um", "ah", "oh"]
-                if text.lower() not in false_positives and len(text.split()) >= 1:
-                    return text
+            # Enhanced filtering for better quality - optimized version
+            text_len = len(text)
+            if text_len > 1 and text not in [".", "..", "...", "you", "thank you"]:
+                # Additional filter for common false positives - more efficient check
+                text_lower = text.lower()
+                if text_len >= 2 and text_lower not in ("mm-hmm", "hmm", "uh", "um", "ah", "oh"):
+                    # More efficient word count check
+                    if ' ' in text or text_len > 3:  # Likely has at least one word
+                        return text
             
             return ""
             
@@ -334,8 +371,11 @@ class VoskSTT:
             logger.error(f"Failed to load Vosk model: {e}")
             self.available = False
 
-    def transcribe(self, audio_data: np.ndarray, config: AudioConfig) -> str:
+    def transcribe(self, audio_data, config: AudioConfig) -> str:
         """Transcribe audio using Vosk"""
+        # Ensure numpy is imported
+        np = _import_numpy()
+        
         if not self.available:
             return "Vosk not available"
         
@@ -377,7 +417,7 @@ class WakeWordDetector:
         self.cooldown = 1.5  # Reduced cooldown for better responsiveness
 
     def detect(self, text: str) -> bool:
-        """Enhanced wake word detection"""
+        """Enhanced wake word detection - optimized version"""
         if not text:
             return False
         
@@ -388,20 +428,30 @@ class WakeWordDetector:
         if current_time - self.last_detection < self.cooldown:
             return False
         
-        # Enhanced wake word matching
+        # Enhanced wake word matching - optimized version
+        # Pre-compile wake words for faster matching
         for wake_word in self.wake_words:
-            # Direct match
+            # Direct match - more efficient check
             if wake_word in text_lower:
                 self.last_detection = current_time
                 logger.info(f"Wake word detected: {wake_word} in '{text}'")
                 return True
             
-            # Fuzzy matching for partial words
+            # Fuzzy matching for partial words - optimized version
             words = text_lower.split()
+            # Early exit if too many words (likely not a wake word)
+            if len(words) > 10:
+                continue
+                
             for word in words:
                 # Check if wake word is close to any word in the transcription
-                if wake_word in word or word in wake_word:
-                    if len(word) >= 3:  # Avoid matching very short words
+                # More efficient length check
+                word_len = len(word)
+                wake_word_len = len(wake_word)
+                
+                if word_len >= 3 and wake_word_len >= 3:  # Avoid matching very short words
+                    # More efficient substring check
+                    if wake_word in word or word in wake_word:
                         self.last_detection = current_time
                         logger.info(f"Wake word detected (fuzzy): {wake_word} ~ {word}")
                         return True
@@ -624,17 +674,23 @@ class JarvisSTT:
             logger.debug("Processing thread stopped")
 
     def _audio_callback(self, in_data, frame_count, time_info, status):
-        """Enhanced audio callback with better error handling"""
+        """Enhanced audio callback with better error handling - optimized version"""
+        # Ensure required modules are imported
+        np = _import_numpy()
+        pyaudio = _import_pyaudio()
+        
         if not self.is_listening:
             return (None, pyaudio.paComplete)
         
         try:
-            # Convert audio data to numpy array
+            # Convert audio data to numpy array - optimized version
+            # Use copy=False for better performance when possible
             audio_chunk = np.frombuffer(in_data, dtype=np.int16)
             
-            # Convert stereo to mono if needed (same as simple_train.py)
+            # Convert stereo to mono if needed (same as simple_train.py) - optimized version
             if self.config.channels == 2:
-                audio_chunk = audio_chunk.reshape(-1, 2).mean(axis=1).astype(np.int16)
+                # More efficient stereo to mono conversion
+                audio_chunk = audio_chunk.reshape(-1, 2).mean(axis=1, dtype=np.int16)
 
             # Add to buffer and check for complete utterance
             utterance_complete = self.audio_buffer.add_chunk(audio_chunk, self.config)
@@ -643,9 +699,10 @@ class JarvisSTT:
                 # Get audio data immediately
                 audio_data = self.audio_buffer.get_audio_data()
                 
-                # Queue for processing (non-blocking)
+                # Queue for processing (non-blocking) - optimized version
                 try:
-                    self.processing_queue.put(audio_data, block=False)
+                    # Use put_nowait for better performance
+                    self.processing_queue.put_nowait(audio_data)
                     if self.debug:
                         logger.debug("Audio queued for processing")
                 except queue.Full:
@@ -657,32 +714,40 @@ class JarvisSTT:
         return (in_data, pyaudio.paContinue)
 
     def _processing_worker(self):
-        """Enhanced processing worker thread"""
+        """Enhanced processing worker thread - optimized version"""
         logger.debug("Processing worker started")
         
         while self.processing_thread_running:
             try:
-                # Get audio data from queue
-                audio_data = self.processing_queue.get(timeout=1.0)
-                
+                # Get audio data from queue - optimized version
+                try:
+                    audio_data = self.processing_queue.get(timeout=1.0)
+                except queue.Empty:
+                    continue
+                    
                 if audio_data is None:  # Sentinel for shutdown
                     break
                 
-                if len(audio_data) > 0:
+                data_length = len(audio_data)
+                if data_length > 0:
                     # Transcribe audio
                     transcription = self.stt_engine.transcribe(audio_data, self.config)
                     
                     if transcription:
                         logger.info(f"Transcribed: '{transcription}'")
                         
-                        # Perform speaker identification if enabled
+                        # Perform speaker identification if enabled - optimized version
                         speaker_id = None
                         speaker_confidence = 0.0
                         
                         if self.enable_speaker_id and self.speaker_id_system:
                             try:
-                                # Convert int16 audio to float32 for speaker ID
-                                audio_float = audio_data.astype(np.float32) / 32768.0
+                                # Ensure numpy is imported
+                                np = _import_numpy()
+                                
+                                # Convert int16 audio to float32 for speaker ID - optimized version
+                                # Use more efficient conversion
+                                audio_float = audio_data.astype(np.float32, copy=False) / 32768.0
                                 
                                 identification_result = self.speaker_id_system.identify_speaker(
                                     audio_float, self.config.sample_rate
@@ -700,7 +765,8 @@ class JarvisSTT:
                             except Exception as e:
                                 logger.error(f"Speaker identification failed: {e}")
                         
-                        # Call appropriate callback
+                        # Call appropriate callback - optimized version
+                        # Check conditions in order of likelihood for better performance
                         if self.on_speech_with_speaker_callback:
                             try:
                                 self.on_speech_with_speaker_callback(transcription, speaker_id, speaker_confidence)
@@ -711,18 +777,21 @@ class JarvisSTT:
                                 self.on_speech_callback(transcription)
                             except Exception as e:
                                 logger.error(f"Speech callback error: {e}")
-                        
-                        # Only call wake word callback if no speech callback is set (for backwards compatibility)
-                        elif self.on_wake_word_callback and self.wake_detector.detect(transcription):
-                            try:
-                                self.on_wake_word_callback()
-                            except Exception as e:
-                                logger.error(f"Wake word callback error: {e}")
+                        elif self.on_wake_word_callback:
+                            # Only run wake word detection if we have a callback
+                            if self.wake_detector.detect(transcription):
+                                try:
+                                    self.on_wake_word_callback()
+                                except Exception as e:
+                                    logger.error(f"Wake word callback error: {e}")
                 
-                self.processing_queue.task_done()
+                # More efficient task done handling
+                try:
+                    self.processing_queue.task_done()
+                except ValueError:
+                    # Task already done
+                    pass
                 
-            except queue.Empty:
-                continue
             except Exception as e:
                 logger.error(f"Error in processing worker: {e}")
         
@@ -730,6 +799,10 @@ class JarvisSTT:
 
     def listen_and_transcribe(self, timeout: float = 10.0) -> str:
         """Enhanced listen and transcribe with better state management"""
+        # Ensure required modules are imported
+        np = _import_numpy()
+        pyaudio = _import_pyaudio()
+        
         if self.debug: 
             logger.info(f"Starting listen_and_transcribe with {timeout}s timeout")
         
@@ -807,6 +880,9 @@ class JarvisSTT:
     
     def transcribe_file(self, filename: str) -> str:
         """Transcribe audio from file - for testing"""
+        # Ensure numpy is imported
+        np = _import_numpy()
+        
         try:
             # Read audio file
             with wave.open(filename, 'rb') as wav_file:

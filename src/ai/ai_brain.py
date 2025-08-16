@@ -10,7 +10,10 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import logging
+import os
+import sys
 import json
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from enum import Enum
@@ -469,56 +472,180 @@ class AIBrainManager:
         }
     
     def _initialize_brains(self):
-        """Initialize available brain providers"""
+        """Initialize available brain providers with lazy loading"""
         providers_config = self.config.get("providers", {})
         
-        # Initialize Anthropic
-        if providers_config.get("anthropic", {}).get("enabled", False):
-            model = providers_config["anthropic"].get("model", "claude-3-haiku-20240307")
-            brain = AnthropicBrain(model=model)
-            if brain.available:
-                self.brains[BrainProvider.ANTHROPIC] = brain
+        # Store configuration for lazy initialization
+        self._provider_configs = {}
         
-        # Initialize DeepSeek
-        if providers_config.get("deepseek", {}).get("enabled", False):
-            model = providers_config["deepseek"].get("model", "deepseek-chat")
-            brain = DeepSeekBrain(model=model)
-            if brain.available:
-                self.brains[BrainProvider.DEEPSEEK] = brain
+        # Only store configs for enabled providers, don't initialize yet
+        for provider_name, provider_config in providers_config.items():
+            if provider_config.get("enabled", False):
+                self._provider_configs[provider_name] = provider_config
         
-        # Initialize Local (when implemented)
-        if providers_config.get("local", {}).get("enabled", False):
-            brain = LocalBrain()
-            if brain.available:
-                self.brains[BrainProvider.LOCAL] = brain
+        logger.info(f"Deferred initialization of {len(self._provider_configs)} brain providers")
+    
+    def _get_or_create_brain(self, provider_enum: BrainProvider):
+        """Get or create a brain instance with lazy initialization"""
+        if provider_enum not in self.brains:
+            # Initialize the brain on first access
+            provider_name = provider_enum.value
+            if provider_name in self._provider_configs:
+                provider_config = self._provider_configs[provider_name]
+                
+                if provider_enum == BrainProvider.ANTHROPIC:
+                    model = provider_config.get("model", "claude-3-haiku-20240307")
+                    brain = AnthropicBrain(model=model)
+                elif provider_enum == BrainProvider.DEEPSEEK:
+                    model = provider_config.get("model", "deepseek-chat")
+                    brain = DeepSeekBrain(model=model)
+                elif provider_enum == BrainProvider.LOCAL:
+                    brain = LocalBrain()
+                else:
+                    return None
+                
+                if brain.available:
+                    self.brains[provider_enum] = brain
+                    logger.info(f"Initialized {brain.provider_name} brain on demand")
+                else:
+                    logger.warning(f"Failed to initialize {provider_name} brain")
+                    return None
         
-        logger.info(f"Initialized {len(self.brains)} brain providers: {list(self.brains.keys())}")
+        return self.brains.get(provider_enum)
     
     def _setup_provider_hierarchy(self):
-        """Setup primary and fallback providers based on priority"""
-        if not self.brains:
-            logger.warning("No AI brain providers available")
+        """Setup primary and fallback providers based on priority with lazy loading"""
+        if not self._provider_configs:
+            logger.warning("No AI brain providers configured")
             return
         
         # Sort providers by priority
-        providers_config = self.config.get("providers", {})
         available_providers = []
         
-        for provider_enum, brain in self.brains.items():
-            provider_name = provider_enum.value
-            priority = providers_config.get(provider_name, {}).get("priority", 999)
-            available_providers.append((priority, provider_enum, brain))
+        for provider_name, provider_config in self._provider_configs.items():
+            try:
+                provider_enum = BrainProvider(provider_name)
+                priority = provider_config.get("priority", 999)
+                available_providers.append((priority, provider_enum, provider_config))
+            except ValueError:
+                logger.warning(f"Unknown provider name: {provider_name}")
         
         available_providers.sort(key=lambda x: x[0])  # Sort by priority
         
-        # Set primary and fallback
+        # Set primary and fallback (initialize on demand)
         if available_providers:
-            self.primary_brain = available_providers[0][2]
-            logger.info(f"Primary brain: {self.primary_brain.provider_name}")
+            self._primary_provider = available_providers[0][1]
+            self.primary_brain = None  # Will be initialized on first use
+            
+            logger.info(f"Primary brain provider: {self._primary_provider.value}")
             
             if len(available_providers) > 1 and self.config.get("fallback_enabled", True):
-                self.fallback_brain = available_providers[1][2]
-                logger.info(f"Fallback brain: {self.fallback_brain.provider_name}")
+                self._fallback_provider = available_providers[1][1]
+                self.fallback_brain = None  # Will be initialized on first use
+                logger.info(f"Fallback brain provider: {self._fallback_provider.value}")
+    
+    def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
+        """Process a request through available brain providers"""
+        # Initialize primary brain on first use
+        if self.primary_brain is None and hasattr(self, '_primary_provider'):
+            self.primary_brain = self._get_or_create_brain(self._primary_provider)
+        
+        if not self.primary_brain:
+            return "I'm sorry sir, my intelligence systems are currently offline."
+        
+        # Try primary brain first
+        try:
+            response = self.primary_brain.process_request(user_input, context)
+            
+            # Check if response indicates failure
+            failure_indicators = ["error", "sorry", "trouble", "difficulties", "offline", "not available"]
+            response_lower = response.lower()
+            
+            if any(indicator in response_lower for indicator in failure_indicators):
+                logger.warning("Primary brain response indicates failure")
+                # Initialize fallback brain on first use
+                if self.fallback_brain is None and hasattr(self, '_fallback_provider'):
+                    self.fallback_brain = self._get_or_create_brain(self._fallback_provider)
+                
+                if self.fallback_brain:
+                    return self._try_fallback(user_input, context)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Primary brain failed: {e}")
+            # Initialize fallback brain on first use
+            if self.fallback_brain is None and hasattr(self, '_fallback_provider'):
+                self.fallback_brain = self._get_or_create_brain(self._fallback_provider)
+            
+            if self.fallback_brain:
+                return self._try_fallback(user_input, context)
+            else:
+                return "I'm experiencing technical difficulties, sir."
+    
+    def _try_fallback(self, user_input: str, context: Dict[str, Any] = None) -> str:
+        """Try fallback brain provider"""
+        try:
+            logger.info("Attempting fallback brain")
+            response = self.fallback_brain.process_request(user_input, context)
+            return response
+        except Exception as e:
+            logger.error(f"Fallback brain also failed: {e}")
+            return "I'm experiencing difficulties across all my intelligence systems, sir."
+    
+    def is_available(self) -> bool:
+        """Check if any brain provider is available"""
+        # Check if we have any configured providers
+        return bool(self._provider_configs)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get status of all brain providers"""
+        # Initialize primary brain if not already done
+        if self.primary_brain is None and hasattr(self, '_primary_provider'):
+            self.primary_brain = self._get_or_create_brain(self._primary_provider)
+        
+        # Initialize fallback brain if not already done
+        if self.fallback_brain is None and hasattr(self, '_fallback_provider'):
+            self.fallback_brain = self._get_or_create_brain(self._fallback_provider)
+        
+        status = {
+            "available_providers": len(self._provider_configs),
+            "primary": self.primary_brain.provider_name if self.primary_brain else None,
+            "fallback": self.fallback_brain.provider_name if self.fallback_brain else None,
+            "providers": {}
+        }
+        
+        # Add status for all configured providers
+        for provider_name, provider_config in self._provider_configs.items():
+            try:
+                provider_enum = BrainProvider(provider_name)
+                # Get or create brain for status check
+                brain = self._get_or_create_brain(provider_enum)
+                status["providers"][provider_name] = {
+                    "available": brain.available if brain else False,
+                    "healthy": brain.is_healthy() if brain and brain.available else False
+                }
+            except ValueError:
+                status["providers"][provider_name] = {
+                    "available": False,
+                    "healthy": False
+                }
+        
+        return status
+    
+    def clear_all_history(self):
+        """Clear conversation history for all providers"""
+        # Initialize all brains to clear their history
+        for provider_name in self._provider_configs.keys():
+            try:
+                provider_enum = BrainProvider(provider_name)
+                brain = self._get_or_create_brain(provider_enum)
+                if brain:
+                    brain.clear_history()
+            except ValueError:
+                pass
+        
+        logger.info("All brain provider histories cleared")
     
     def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
         """Process a request through available brain providers"""

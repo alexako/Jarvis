@@ -3,7 +3,13 @@
 import time
 import datetime
 import logging
-from speech_analysis.stt import JarvisSTT
+import sys
+import os
+
+# Add the parent directory to the path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from src.audio.speech_analysis.stt import JarvisSTT
 
 # Set up detailed logging
 logging.basicConfig(

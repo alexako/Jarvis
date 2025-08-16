@@ -4,8 +4,6 @@ Jarvis AI Brain Module - Modular intelligence provider
 Supports multiple AI providers with fallbacks and cost optimization
 """
 
-print("DEBUG: ai_brain.py module loaded")  # Simple print for debugging
-
 import sys
 import os
 # Add the src directory to the path so we can import modules
@@ -695,7 +693,6 @@ class AIBrainManager:
     
     def get_status(self) -> Dict[str, Any]:
         """Get status of all brain providers"""
-        print("DEBUG: get_status called")  # Simple print for debugging
         logger.info("get_status called")
         logger.info(f"self._provider_configs: {self._provider_configs}")
         

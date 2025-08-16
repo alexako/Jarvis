@@ -36,9 +36,6 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 # Jarvis components
-import ai.ai_brain
-print(f"DEBUG: ai_brain module file: {ai.ai_brain.__file__}")  # Debug print
-print(f"DEBUG: AIBrainManager class: {ai.ai_brain.AIBrainManager}")  # Debug print
 from ai.ai_brain import AIBrainManager, BrainProvider
 from audio.speech_analysis.tts import JarvisTTS
 from commands.commands import JarvisCommands, create_ai_config

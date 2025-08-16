@@ -4,6 +4,8 @@ Jarvis AI Brain Module - Modular intelligence provider
 Supports multiple AI providers with fallbacks and cost optimization
 """
 
+print("DEBUG: ai_brain.py module loaded")  # Simple print for debugging
+
 import sys
 import os
 # Add the src directory to the path so we can import modules
@@ -317,6 +319,8 @@ class LocalBrain(BaseBrain):
         self.model_name = model_name
         self.base_url = "http://localhost:11434"
         
+        logger.info(f"LocalBrain constructor called with model_name: {model_name}")
+        
         # Test Ollama connection
         try:
             import subprocess
@@ -327,11 +331,29 @@ class LocalBrain(BaseBrain):
                 timeout=5
             )
             
-            if result.returncode == 0 and model_name in result.stdout:
-                self.available = True
-                logger.info(f"Local brain initialized with {model_name}")
+            if result.returncode == 0:
+                logger.info(f"Ollama models available:\n{result.stdout}")
+                if model_name in result.stdout:
+                    self.available = True
+                    logger.info(f"Local brain initialized with {model_name}")
+                else:
+                    logger.warning(f"Model {model_name} not found in Ollama")
+                    # Let's try to pull the model
+                    logger.info(f"Attempting to pull model {model_name}")
+                    pull_result = subprocess.run(
+                        ["ollama", "pull", model_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=300  # 5 minute timeout for pulling
+                    )
+                    if pull_result.returncode == 0:
+                        self.available = True
+                        logger.info(f"Successfully pulled and initialized {model_name}")
+                    else:
+                        logger.error(f"Failed to pull {model_name}: {pull_result.stderr}")
+                        self.available = False
             else:
-                logger.warning(f"Model {model_name} not found in Ollama")
+                logger.error(f"Ollama list failed: {result.stderr}")
                 self.available = False
                 
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
@@ -343,7 +365,13 @@ class LocalBrain(BaseBrain):
     
     def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
         """Process request using local Ollama model"""
+        logger.info("=== LocalBrain.process_request START ===")
+        logger.info(f"user_input: {user_input}")
+        logger.info(f"context: {context}")
+        logger.info(f"self.available: {self.available}")
+        
         if not self.available:
+            logger.warning("LocalBrain not available")
             return "Local AI is not available, sir."
         
         try:
@@ -382,6 +410,9 @@ IMPORTANT: You have access to conversation context and user information. Use thi
             # Add the user input
             full_prompt += f"\n\nUser: {user_input}\nJarvis:"
             
+            logger.info(f"Calling ollama with model: {self.model_name}")
+            logger.info(f"Full prompt: {full_prompt}")
+            
             # Call Ollama via subprocess for reliability
             result = subprocess.run(
                 ["ollama", "run", self.model_name, full_prompt],
@@ -390,8 +421,13 @@ IMPORTANT: You have access to conversation context and user information. Use thi
                 timeout=30  # 30 second timeout
             )
             
+            logger.info(f"Ollama result returncode: {result.returncode}")
+            logger.info(f"Ollama result stdout: {result.stdout}")
+            logger.info(f"Ollama result stderr: {result.stderr}")
+            
             if result.returncode == 0:
                 response = result.stdout.strip()
+                logger.info(f"Raw response from ollama: {response}")
                 
                 # Clean up the response
                 if response:
@@ -408,18 +444,24 @@ IMPORTANT: You have access to conversation context and user information. Use thi
                     if len(self.conversation_history) > self.max_history:
                         self.conversation_history = self.conversation_history[-self.max_history:]
                     
+                    logger.info("=== LocalBrain.process_request END (success) ===")
                     return response
                 else:
+                    logger.warning("Empty response from ollama")
+                    logger.info("=== LocalBrain.process_request END (empty response) ===")
                     return "I'm sorry sir, I couldn't generate a proper response."
             else:
                 logger.error(f"Ollama error: {result.stderr}")
+                logger.info("=== LocalBrain.process_request END (ollama error) ===")
                 return "I encountered an error processing your request, sir."
                 
         except subprocess.TimeoutExpired:
             logger.warning("Local AI request timed out")
+            logger.info("=== LocalBrain.process_request END (timeout) ===")
             return "I'm sorry sir, that request is taking too long to process."
         except Exception as e:
             logger.error(f"Local brain processing error: {e}")
+            logger.info("=== LocalBrain.process_request END (exception) ===")
             return "I encountered an error processing your request, sir."
     
     def is_healthy(self) -> bool:
@@ -475,15 +517,22 @@ class AIBrainManager:
         """Initialize available brain providers with lazy loading"""
         providers_config = self.config.get("providers", {})
         
+        logger.info(f"AIBrainManager config: {self.config}")
+        logger.info(f"Providers config: {providers_config}")
+        
         # Store configuration for lazy initialization
         self._provider_configs = {}
         
         # Only store configs for enabled providers, don't initialize yet
         for provider_name, provider_config in providers_config.items():
+            logger.info(f"Checking provider {provider_name}: {provider_config}")
             if provider_config.get("enabled", False):
                 self._provider_configs[provider_name] = provider_config
+                logger.info(f"Enabled provider {provider_name}")
+            else:
+                logger.info(f"Provider {provider_name} is disabled")
         
-        logger.info(f"Deferred initialization of {len(self._provider_configs)} brain providers")
+        logger.info(f"Deferred initialization of {len(self._provider_configs)} brain providers: {list(self._provider_configs.keys())}")
     
     def _get_or_create_brain(self, provider_enum: BrainProvider):
         """Get or create a brain instance with lazy initialization"""
@@ -500,7 +549,9 @@ class AIBrainManager:
                     model = provider_config.get("model", "deepseek-chat")
                     brain = DeepSeekBrain(model=model)
                 elif provider_enum == BrainProvider.LOCAL:
-                    brain = LocalBrain()
+                    model = provider_config.get("model", "llama3.2:latest")
+                    logger.info(f"Initializing LocalBrain with model: {model}")
+                    brain = LocalBrain(model_name=model)
                 else:
                     return None
                 
@@ -512,6 +563,26 @@ class AIBrainManager:
                     return None
         
         return self.brains.get(provider_enum)
+    
+    def get_primary_brain(self) -> Optional[BaseBrain]:
+        """Get the primary brain provider (initializing it if needed)"""
+        logger.info(f"Getting primary brain, _primary_provider: {getattr(self, '_primary_provider', None)}")
+        if hasattr(self, '_primary_provider'):
+            brain = self._get_or_create_brain(self._primary_provider)
+            logger.info(f"Primary brain retrieved: {brain.provider_name if brain else None}")
+            return brain
+        logger.info("No primary provider found")
+        return None
+    
+    def get_fallback_brain(self) -> Optional[BaseBrain]:
+        """Get the fallback brain provider (initializing it if needed)"""
+        logger.info(f"Getting fallback brain, _fallback_provider: {getattr(self, '_fallback_provider', None)}")
+        if hasattr(self, '_fallback_provider'):
+            brain = self._get_or_create_brain(self._fallback_provider)
+            logger.info(f"Fallback brain retrieved: {brain.provider_name if brain else None}")
+            return brain
+        logger.info("No fallback provider found")
+        return None
     
     def _setup_provider_hierarchy(self):
         """Setup primary and fallback providers based on priority with lazy loading"""
@@ -546,16 +617,32 @@ class AIBrainManager:
     
     def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
         """Process a request through available brain providers"""
+        logger.info("=== AIBrainManager.process_request START ===")
+        logger.info(f"Processing request with user_input: {user_input}")
+        logger.info(f"self.primary_brain: {self.primary_brain}")
+        logger.info(f"hasattr(self, '_primary_provider'): {hasattr(self, '_primary_provider')}")
+        
         # Initialize primary brain on first use
         if self.primary_brain is None and hasattr(self, '_primary_provider'):
+            logger.info("Initializing primary brain on first use")
             self.primary_brain = self._get_or_create_brain(self._primary_provider)
+            logger.info(f"Primary brain initialized: {self.primary_brain}")
+        
+        logger.info(f"After initialization - self.primary_brain: {self.primary_brain}")
         
         if not self.primary_brain:
+            logger.warning("No primary brain available")
+            logger.info("=== AIBrainManager.process_request END (no primary brain) ===")
             return "I'm sorry sir, my intelligence systems are currently offline."
+        
+        logger.info(f"Using primary brain: {self.primary_brain.provider_name}")
+        logger.info(f"Primary brain available: {self.primary_brain.available}")
         
         # Try primary brain first
         try:
+            logger.info("Calling primary brain process_request")
             response = self.primary_brain.process_request(user_input, context)
+            logger.info(f"Primary brain response: {response}")
             
             # Check if response indicates failure
             failure_indicators = ["error", "sorry", "trouble", "difficulties", "offline", "not available"]
@@ -568,8 +655,12 @@ class AIBrainManager:
                     self.fallback_brain = self._get_or_create_brain(self._fallback_provider)
                 
                 if self.fallback_brain:
-                    return self._try_fallback(user_input, context)
+                    logger.info("Using fallback brain")
+                    result = self._try_fallback(user_input, context)
+                    logger.info("=== AIBrainManager.process_request END (with fallback) ===")
+                    return result
             
+            logger.info("=== AIBrainManager.process_request END (success) ===")
             return response
             
         except Exception as e:
@@ -579,8 +670,12 @@ class AIBrainManager:
                 self.fallback_brain = self._get_or_create_brain(self._fallback_provider)
             
             if self.fallback_brain:
-                return self._try_fallback(user_input, context)
+                logger.info("Using fallback brain after exception")
+                result = self._try_fallback(user_input, context)
+                logger.info("=== AIBrainManager.process_request END (with fallback after exception) ===")
+                return result
             else:
+                logger.info("=== AIBrainManager.process_request END (technical difficulties) ===")
                 return "I'm experiencing technical difficulties, sir."
     
     def _try_fallback(self, user_input: str, context: Dict[str, Any] = None) -> str:
@@ -600,13 +695,21 @@ class AIBrainManager:
     
     def get_status(self) -> Dict[str, Any]:
         """Get status of all brain providers"""
+        print("DEBUG: get_status called")  # Simple print for debugging
+        logger.info("get_status called")
+        logger.info(f"self._provider_configs: {self._provider_configs}")
+        
         # Initialize primary brain if not already done
         if self.primary_brain is None and hasattr(self, '_primary_provider'):
+            logger.info("Initializing primary brain for status check")
             self.primary_brain = self._get_or_create_brain(self._primary_provider)
+            logger.info(f"Primary brain after initialization: {self.primary_brain}")
         
         # Initialize fallback brain if not already done
         if self.fallback_brain is None and hasattr(self, '_fallback_provider'):
+            logger.info("Initializing fallback brain for status check")
             self.fallback_brain = self._get_or_create_brain(self._fallback_provider)
+            logger.info(f"Fallback brain after initialization: {self.fallback_brain}")
         
         status = {
             "available_providers": len(self._provider_configs),
@@ -615,22 +718,30 @@ class AIBrainManager:
             "providers": {}
         }
         
+        logger.info(f"Initial status: {status}")
+        
         # Add status for all configured providers
         for provider_name, provider_config in self._provider_configs.items():
+            logger.info(f"Checking status for provider: {provider_name}")
             try:
                 provider_enum = BrainProvider(provider_name)
+                logger.info(f"Provider enum: {provider_enum}")
                 # Get or create brain for status check
                 brain = self._get_or_create_brain(provider_enum)
+                logger.info(f"Brain for {provider_name}: {brain}")
                 status["providers"][provider_name] = {
                     "available": brain.available if brain else False,
                     "healthy": brain.is_healthy() if brain and brain.available else False
                 }
-            except ValueError:
+                logger.info(f"Status for {provider_name}: {status['providers'][provider_name]}")
+            except ValueError as e:
+                logger.error(f"Error processing provider {provider_name}: {e}")
                 status["providers"][provider_name] = {
                     "available": False,
                     "healthy": False
                 }
         
+        logger.info(f"Final status: {status}")
         return status
     
     def clear_all_history(self):
@@ -647,68 +758,23 @@ class AIBrainManager:
         
         logger.info("All brain provider histories cleared")
     
-    def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
-        """Process a request through available brain providers"""
-        if not self.primary_brain:
-            return "I'm sorry sir, my intelligence systems are currently offline."
-        
-        # Try primary brain first
-        try:
-            response = self.primary_brain.process_request(user_input, context)
-            
-            # Check if response indicates failure
-            failure_indicators = ["error", "sorry", "trouble", "difficulties", "offline", "not available"]
-            response_lower = response.lower()
-            
-            if any(indicator in response_lower for indicator in failure_indicators):
-                logger.warning("Primary brain response indicates failure")
-                if self.fallback_brain:
-                    return self._try_fallback(user_input, context)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Primary brain failed: {e}")
-            if self.fallback_brain:
-                return self._try_fallback(user_input, context)
-            else:
-                return "I'm experiencing technical difficulties, sir."
-    
-    def _try_fallback(self, user_input: str, context: Dict[str, Any] = None) -> str:
-        """Try fallback brain provider"""
-        try:
-            logger.info("Attempting fallback brain")
-            response = self.fallback_brain.process_request(user_input, context)
-            return response
-        except Exception as e:
-            logger.error(f"Fallback brain also failed: {e}")
-            return "I'm experiencing difficulties across all my intelligence systems, sir."
-    
     def is_available(self) -> bool:
         """Check if any brain provider is available"""
-        return self.primary_brain is not None or self.fallback_brain is not None
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get status of all brain providers"""
-        status = {
-            "available_providers": len(self.brains),
-            "primary": self.primary_brain.provider_name if self.primary_brain else None,
-            "fallback": self.fallback_brain.provider_name if self.fallback_brain else None,
-            "providers": {}
-        }
-        
-        for provider_enum, brain in self.brains.items():
-            status["providers"][provider_enum.value] = {
-                "available": brain.available,
-                "healthy": brain.is_healthy()
-            }
-        
-        return status
+        # Check if we have any configured providers
+        return bool(self._provider_configs)
     
     def clear_all_history(self):
         """Clear conversation history for all providers"""
-        for brain in self.brains.values():
-            brain.clear_history()
+        # Initialize all brains to clear their history
+        for provider_name in self._provider_configs.keys():
+            try:
+                provider_enum = BrainProvider(provider_name)
+                brain = self._get_or_create_brain(provider_enum)
+                if brain:
+                    brain.clear_history()
+            except ValueError:
+                pass
+        
         logger.info("All brain provider histories cleared")
 
 # Convenience function for easy integration

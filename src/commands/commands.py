@@ -42,9 +42,15 @@ class JarvisCommands:
         self.ai_enabled = True
         
         try:
+            logger.info(f"Initializing AI brain with config: {ai_config}")
             self.ai_brain = create_ai_brain(ai_config)
-            if self.ai_brain.is_available():
-                logger.info("AI brain successfully initialized")
+            # For API usage, enable AI if configuration is provided
+            if ai_config is not None:
+                logger.info("AI brain configuration provided, enabling AI features")
+                self.ai_enabled = True
+            elif self.ai_brain.is_available():
+                logger.info("AI brain successfully initialized with providers")
+                self.ai_enabled = True
             else:
                 logger.warning("AI brain initialized but no providers available")
                 self.ai_enabled = False
@@ -191,28 +197,42 @@ class JarvisCommands:
             return
         
         # If no built-in command matched, try AI brain
-        if self.ai_enabled and self.ai_brain and self.ai_brain.is_available():
-            logger.info("No built-in command matched, delegating to AI brain")
-            self._handle_ai_request(text_clean)
+        if self.ai_enabled and self.ai_brain:
+            # Check if any brain providers are actually healthy
+            primary_brain = self.ai_brain.get_primary_brain()
+            if primary_brain and primary_brain.is_healthy():
+                logger.info("No built-in command matched, delegating to healthy AI brain")
+                self._handle_ai_request(text_clean)
+            elif self.ai_brain.get_fallback_brain() and self.ai_brain.get_fallback_brain().is_healthy():
+                logger.info("No built-in command matched, delegating to healthy fallback AI brain")
+                self._handle_ai_request(text_clean)
+            else:
+                logger.info("AI not available or not healthy, using unknown command handler")
+                self._handle_unknown_command(text_clean)
         else:
             # Fallback to unknown command
-            logger.info("AI not available, using unknown command handler")
+            logger.info("AI not enabled or not available, using unknown command handler")
             self._handle_unknown_command(text_clean)
     
     def _handle_ai_request(self, user_input: str):
         """Handle request through AI brain with context awareness"""
+        logger.info(f"Handling AI request with user_input: {user_input}")
         try:
             # Build context for AI including conversation history
             context = self._build_context()
+            logger.info(f"Built context: {context}")
             
             # Add conversation context if available
             if self.context:
                 context_info = self.context.get_context_for_ai(include_persistent=True)
                 if context_info:
                     context['conversation_context'] = context_info
+                    logger.info(f"Added conversation context: {context_info}")
             
             # Process through AI brain
+            logger.info("Calling AI brain process_request")
             response = self.ai_brain.process_request(user_input, context)
+            logger.info(f"AI brain response: {response}")
             
             # Store the exchange in context
             if self.context:

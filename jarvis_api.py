@@ -36,6 +36,9 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 # Jarvis components
+import ai.ai_brain
+print(f"DEBUG: ai_brain module file: {ai.ai_brain.__file__}")  # Debug print
+print(f"DEBUG: AIBrainManager class: {ai.ai_brain.AIBrainManager}")  # Debug print
 from ai.ai_brain import AIBrainManager, BrainProvider
 from audio.speech_analysis.tts import JarvisTTS
 from commands.commands import JarvisCommands, create_ai_config
@@ -182,6 +185,7 @@ async def initialize_jarvis():
             anthropic_enabled=True,
             deepseek_enabled=True,
             local_enabled=True,
+            local_model="qwen2:0.5b",
             prefer_local=True  # Prefer local for API use
         )
         
@@ -308,11 +312,15 @@ async def get_status():
     """Get system status"""
     uptime = time.time() - server_start_time
     
-    # Get AI provider status
+    # Get AI provider status using the proper method
     ai_providers = {}
     if jarvis_brain:
-        for provider, brain in jarvis_brain.brains.items():
-            ai_providers[provider.value] = brain.is_healthy()
+        status_info = jarvis_brain.get_status()
+        provider_details = status_info.get("providers", {})
+        # Convert to the format expected by the StatusResponse model
+        for provider_name, details in provider_details.items():
+            # For now, we'll use the "healthy" status as the boolean value
+            ai_providers[provider_name] = details.get("healthy", False)
     
     # Determine overall status
     if not jarvis_brain or not jarvis_tts:
@@ -322,13 +330,18 @@ async def get_status():
     else:
         status_value = "degraded"
     
+    # Determine local mode
+    local_mode = False
+    if jarvis_brain and jarvis_brain.primary_brain:
+        local_mode = jarvis_brain.primary_brain.provider_name == "Local Phi-3.5"
+    
     return StatusResponse(
         version=__version__,
         status=status_value,
         uptime=uptime,
         ai_providers=ai_providers,
         tts_engine=jarvis_tts.tts_engine.__class__.__name__ if jarvis_tts else "none",
-        local_mode=jarvis_brain.primary_brain.provider_name == "Local Phi-3.5" if jarvis_brain else False
+        local_mode=local_mode
     )
 
 @app.post("/chat", response_model=TextResponse)

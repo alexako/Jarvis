@@ -104,11 +104,14 @@ class TestDeepSeekIntegration(unittest.TestCase):
             # Check that manager was initialized
             self.assertIsNotNone(manager)
             
+            # Trigger initialization of the DeepSeek brain by accessing it
+            # This is needed because of lazy loading
+            deepseek_brain = manager._get_or_create_brain(BrainProvider.DEEPSEEK)
+            
             # Check that DeepSeek is available in the brains dictionary
             self.assertIn(BrainProvider.DEEPSEEK, manager.brains)
             
             # Check that the DeepSeek brain is available
-            deepseek_brain = manager.brains[BrainProvider.DEEPSEEK]
             self.assertTrue(deepseek_brain.available)
 
 

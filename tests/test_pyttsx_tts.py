@@ -7,10 +7,10 @@ import sys
 import os
 import logging
 
-# Add the speech_analysis directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'speech_analysis'))
+# Add the src directory to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from tts import PyttsxTTS, TTSConfig
+from audio.speech_analysis.tts import PyttsxTTS, TTSConfig
 
 # Configure logging for debugging
 logging.basicConfig(level=logging.DEBUG)

@@ -115,11 +115,14 @@ class TestAnthropicIntegration(unittest.TestCase):
             # Check that manager was initialized
             self.assertIsNotNone(manager)
             
+            # Trigger initialization of the Anthropic brain by accessing it
+            # This is needed because of lazy loading
+            anthropic_brain = manager._get_or_create_brain(BrainProvider.ANTHROPIC)
+            
             # Check that Anthropic is available in the brains dictionary
             self.assertIn(BrainProvider.ANTHROPIC, manager.brains)
             
             # Check that the Anthropic brain is available
-            anthropic_brain = manager.brains[BrainProvider.ANTHROPIC]
             self.assertTrue(anthropic_brain.available)
 
 

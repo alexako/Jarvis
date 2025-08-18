@@ -414,10 +414,10 @@ class WakeWordDetector:
             
         self.wake_words = [word.lower() for word in wake_words]
         self.last_detection = 0
-        self.cooldown = 1.5  # Reduced cooldown for better responsiveness
+        self.cooldown = 1.0  # Reduced cooldown for better responsiveness
 
     def detect(self, text: str) -> bool:
-        """Enhanced wake word detection - optimized version"""
+        """Enhanced wake word detection with improved matching"""
         if not text:
             return False
         
@@ -428,34 +428,55 @@ class WakeWordDetector:
         if current_time - self.last_detection < self.cooldown:
             return False
         
-        # Enhanced wake word matching - optimized version
-        # Pre-compile wake words for faster matching
+        # Enhanced wake word matching with better partial matching
         for wake_word in self.wake_words:
-            # Direct match - more efficient check
+            # Direct match (exact or with surrounding punctuation/whitespace)
             if wake_word in text_lower:
                 self.last_detection = current_time
                 logger.info(f"Wake word detected: {wake_word} in '{text}'")
                 return True
             
-            # Fuzzy matching for partial words - optimized version
+            # Split into words for more precise matching
             words = text_lower.split()
-            # Early exit if too many words (likely not a wake word)
-            if len(words) > 10:
-                continue
-                
             for word in words:
-                # Check if wake word is close to any word in the transcription
-                # More efficient length check
-                word_len = len(word)
-                wake_word_len = len(wake_word)
+                # Exact word match
+                if word == wake_word:
+                    self.last_detection = current_time
+                    logger.info(f"Wake word detected (exact): {wake_word} in '{text}'")
+                    return True
                 
-                if word_len >= 3 and wake_word_len >= 3:  # Avoid matching very short words
-                    # More efficient substring check
-                    if wake_word in word or word in wake_word:
+                # Partial matching with edit distance for misrecognitions
+                if len(word) >= 3 and len(wake_word) >= 3:
+                    # Check if they're similar (handles misrecognitions like "jervis")
+                    if self._is_similar_word(word, wake_word):
                         self.last_detection = current_time
-                        logger.info(f"Wake word detected (fuzzy): {wake_word} ~ {word}")
+                        logger.info(f"Wake word detected (similar): {wake_word} ~ {word} in '{text}'")
                         return True
         
+        return False
+    
+    def _is_similar_word(self, word: str, wake_word: str) -> bool:
+        """Check if two words are similar using a simple heuristic"""
+        # If one contains the other
+        if wake_word in word or word in wake_word:
+            return True
+            
+        # If they have a high character overlap
+        common_chars = set(word) & set(wake_word)
+        total_chars = set(word) | set(wake_word)
+        
+        if len(total_chars) > 0 and len(common_chars) / len(total_chars) > 0.6:
+            return True
+            
+        # Handle common misrecognitions
+        misrecognitions = {
+            "jarvis": ["jervis", "javis", "jarvise", "jerves", "jervus"],
+            "hey jarvis": ["hey jervis", "hay jarvis", "hey javis"]
+        }
+        
+        if wake_word in misrecognitions and word in misrecognitions[wake_word]:
+            return True
+            
         return False
 
 

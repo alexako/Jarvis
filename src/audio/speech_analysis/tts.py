@@ -691,8 +691,8 @@ class JarvisTTS:
                 
                 logger.info(f"Speaking text ({len(text.split())} words, {timeout:.1f}s timeout): '{text[:100]}{'...' if len(text) > 100 else ''}'")
                 
-                # Use macOS say command with dynamic timeout
-                subprocess.run(["say", "-v", "Daniel", text], check=True, timeout=timeout)
+                # Use macOS say command with Daniel voice (closest to Iron Man's Jarvis)
+                subprocess.run(["say", "-v", "Daniel", "-r", "185", text], check=True, timeout=timeout)
                 logger.info(f"System say completed successfully")
             else:
                 logger.error("System say fallback not available on this platform")

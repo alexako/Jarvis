@@ -33,14 +33,18 @@ logger = logging.getLogger(__name__)
 class EnhancedJarvisAssistant:
     """Enhanced Jarvis Voice Assistant with improved responsiveness"""
 
-    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic", enable_local_llm=True, tts_engine="piper", enable_speaker_id=True):
+    def __init__(self, ai_enabled=False, prevent_feedback=True, performance_mode=None, ai_provider_preference="anthropic", enable_local_llm=True, tts_engine="piper", enable_speaker_id=True, stt_model_name=None):
         self.performance_mode = performance_mode
         self.enable_speaker_id = enable_speaker_id
         
         # Use enhanced STT with speaker identification
+        # For better wake word detection, use a more accurate model if not specified
+        if stt_model_name is None:
+            stt_model_name = "base.en" if performance_mode != "fast" else "tiny.en"
+        
         self.stt = EnhancedJarvisSTT(
             stt_engine="whisper", 
-            model_name="base", 
+            model_name=stt_model_name, 
             performance_mode=performance_mode,
             enable_speaker_id=enable_speaker_id,
             debug=True  # Enable debug for better monitoring
@@ -157,8 +161,9 @@ class EnhancedJarvisAssistant:
         """Handle wake word detection with enhanced state management"""
         current_time = time.time()
         
-        # Prevent rapid wake word triggers
-        if current_time - self.last_speech_time < self.speech_cooldown:
+        # Prevent rapid wake word triggers (shorter cooldown for wake words)
+        # But still prevent excessive triggering
+        if current_time - self.last_speech_time < self.speech_cooldown/2:
             logger.debug("Wake word ignored due to cooldown")
             return
         
@@ -202,8 +207,8 @@ class EnhancedJarvisAssistant:
         text_lower = text_clean.lower()
         wake_words = ["jarvis", "hey jarvis"]
         
-        # Enhanced wake word detection
-        contains_wake_word = any(wake_word in text_lower for wake_word in wake_words)
+        # Enhanced wake word detection with fuzzy matching
+        contains_wake_word = self._contains_wake_word(text_lower, wake_words)
         
         # Handle wake word activation
         if contains_wake_word and not self.is_active:
@@ -275,6 +280,80 @@ class EnhancedJarvisAssistant:
         except Exception as e:
             logger.error(f"Error processing command '{text}': {e}")
             self.speak_with_feedback_control("I encountered an error processing that command, sir.")
+    
+    def _contains_wake_word(self, text, wake_words):
+        """Enhanced wake word detection with fuzzy matching"""
+        if not text or not wake_words:
+            return False
+            
+        # Direct match
+        for wake_word in wake_words:
+            if wake_word in text:
+                return True
+        
+        # Word-by-word matching with similarity check
+        words = text.split()
+        for wake_word in wake_words:
+            wake_word_parts = wake_word.split()
+            
+            # For multi-word wake words like "hey jarvis"
+            if len(wake_word_parts) > 1:
+                # Check if all parts are in the text in order
+                if self._sequence_in_list(wake_word_parts, words):
+                    return True
+            else:
+                # Single word wake word
+                for word in words:
+                    if self._is_similar_word(word, wake_word):
+                        return True
+                        
+        return False
+    
+    def _sequence_in_list(self, sequence, word_list):
+        """Check if a sequence of words appears in order in a list"""
+        if len(sequence) > len(word_list):
+            return False
+            
+        for i in range(len(word_list) - len(sequence) + 1):
+            match = True
+            for j, seq_word in enumerate(sequence):
+                if not self._is_similar_word(word_list[i + j], seq_word):
+                    match = False
+                    break
+            if match:
+                return True
+        return False
+    
+    def _is_similar_word(self, word, wake_word):
+        """Check if two words are similar"""
+        if word == wake_word:
+            return True
+            
+        # If one contains the other
+        if wake_word in word or word in wake_word:
+            return True
+            
+        # Handle common misrecognitions
+        misrecognitions = {
+            "jarvis": ["jervis", "javis", "jarvise", "jerves", "jervus", "jarvus"],
+            "hey": ["hay", "he"]
+        }
+        
+        # Check if it's a known misrecognition
+        if wake_word in misrecognitions and word in misrecognitions[wake_word]:
+            return True
+            
+        if word in misrecognitions and wake_word in misrecognitions[word]:
+            return True
+            
+        # Check character similarity
+        common_chars = set(word) & set(wake_word)
+        total_chars = set(word) | set(wake_word)
+        
+        if len(total_chars) > 0 and len(common_chars) / len(total_chars) > 0.6:
+            return True
+            
+        return False
     
     def speak_with_feedback_control(self, text):
         """Enhanced speaking method with proper feedback control"""
@@ -519,6 +598,8 @@ def main():
                        default='piper', help='TTS engine to use (default: piper)')
     parser.add_argument('--disable-speaker-id', action='store_true',
                        help='Disable automatic speaker identification')
+    parser.add_argument('--stt-model', type=str, default=None,
+                       help='Specify STT model to use (e.g., tiny.en, base.en, small.en)')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug logging')
     parser.add_argument('--version', action='version', version=f'Jarvis Voice Assistant v{__version__}')
@@ -603,7 +684,8 @@ def main():
         ai_provider_preference=ai_provider_preference,
         enable_local_llm=enable_local_llm,
         tts_engine=args.tts_engine,
-        enable_speaker_id=enable_speaker_id
+        enable_speaker_id=enable_speaker_id,
+        stt_model_name=args.stt_model
     )
     
     assistant.start()

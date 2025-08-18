@@ -87,15 +87,15 @@
   },
   "tts": {
     "default_engine": "piper",
-    "speech_rate_wpm": 150,
+    "speech_rate_wpm": 165,
     "timeout_buffer_factor": 0.5,
     "min_timeout_seconds": 30,
     "max_timeout_seconds": 300,
     "piper": {
       "model_path": "~/.local/share/piper/models/en_GB-alan-medium.onnx",
-      "sentence_silence": 0.3,
+      "sentence_silence": 0.2,
       "volume": 1.0,
-      "speed": 1.0
+      "speed": 1.1
     }
   },
   "local_llm": {

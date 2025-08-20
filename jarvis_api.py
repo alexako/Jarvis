@@ -182,7 +182,7 @@ async def initialize_jarvis():
             anthropic_enabled=True,
             deepseek_enabled=True,
             local_enabled=True,
-            local_model="qwen2:0.5b",
+            local_model="llama3.2:1b",
             prefer_local=True  # Prefer local for API use
         )
         
@@ -266,14 +266,15 @@ def process_jarvis_command(text: str) -> str:
 
 # API Endpoints
 
-@app.get("/", response_model=Dict[str, str])
+@app.get("/", response_model=Dict[str, Any])
 async def root():
     """Root endpoint"""
     return {
         "service": "Jarvis Voice Assistant API",
         "version": __version__,
         "status": "operational",
-        "docs": "/docs"
+        "docs": "/docs",
+        "endpoints": ["/health", "/chat", "/providers", "/status", "/audio", "/users"]
     }
 
 @app.get("/health", response_model=HealthResponse)
@@ -284,11 +285,15 @@ async def health_check():
     # Check AI brain health (lightweight - no external API calls)
     if jarvis_brain:
         components["ai_brain"] = jarvis_brain.is_available()
-        for provider, brain in jarvis_brain.brains.items():
-            # Check if brain is configured and available, not if external API is responsive
-            components[f"ai_provider_{provider.value}"] = brain.available
+        # Add individual provider health
+        components["ai_provider_anthropic"] = "anthropic" in jarvis_brain._provider_configs and jarvis_brain._provider_configs["anthropic"]["enabled"]
+        components["ai_provider_deepseek"] = "deepseek" in jarvis_brain._provider_configs and jarvis_brain._provider_configs["deepseek"]["enabled"]
+        components["ai_provider_local"] = "local" in jarvis_brain._provider_configs and jarvis_brain._provider_configs["local"]["enabled"]
     else:
         components["ai_brain"] = False
+        components["ai_provider_anthropic"] = False
+        components["ai_provider_deepseek"] = False
+        components["ai_provider_local"] = False
     
     # Check TTS health
     components["tts"] = jarvis_tts is not None
@@ -330,7 +335,7 @@ async def get_status():
     # Determine local mode
     local_mode = False
     if jarvis_brain and jarvis_brain.primary_brain:
-        local_mode = jarvis_brain.primary_brain.provider_name == "Local Phi-3.5"
+        local_mode = jarvis_brain.primary_brain.provider_name.startswith("Local")
     
     return StatusResponse(
         version=__version__,

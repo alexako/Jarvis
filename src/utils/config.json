@@ -92,10 +92,10 @@
     "min_timeout_seconds": 30,
     "max_timeout_seconds": 300,
     "piper": {
-      "model_path": "~/.local/share/piper/models/en_GB-alan-medium.onnx",
-      "sentence_silence": 0.2,
+      "model_path": "~/piper_voices/jarvis-high.onnx",
+      "sentence_silence": 0.3,
       "volume": 1.0,
-      "speed": 1.1
+      "speed": 0.95
     }
   },
   "local_llm": {

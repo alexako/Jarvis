@@ -189,7 +189,12 @@ async def initialize_jarvis():
         jarvis_brain = AIBrainManager(ai_config)
         
         # Initialize TTS with Piper neural voice
-        jarvis_tts = JarvisTTS(tts_engine="piper")
+        from utils.config_manager import get_config
+        config = get_config()
+        piper_model_path = config.get('tts.piper.model_path')
+        if piper_model_path and piper_model_path.startswith('~'):
+            piper_model_path = piper_model_path.replace('~', os.path.expanduser('~'))
+        jarvis_tts = JarvisTTS(tts_engine="piper", model_name=piper_model_path)
         
         # Initialize context/memory system - SHARED with voice assistant
         jarvis_context = create_jarvis_context(

@@ -209,6 +209,7 @@ if not allowed_origins:
         "http://127.0.0.1:3000",
         "https://api.alexako.com",
         "https://alexako.com",
+        "https://jarvis.alexako.com",  # Client domain
         "http://localhost:8080",
         "http://localhost:5173"  # Vite dev server
     ]

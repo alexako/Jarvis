@@ -516,6 +516,33 @@ async def chat_with_jarvis(
             detail="Internal server error"
         )
 
+@app.get("/audio/{filename}")
+@limiter.limit("60/minute")
+async def get_audio_file(
+    request: Request,
+    filename: str,
+    current_user: dict = Depends(require_permission("read"))
+):
+    """Retrieve generated audio file"""
+    import os
+    import tempfile
+    
+    # Use the same audio directory as the generation function
+    audio_dir = os.getenv('JARVIS_AUDIO_DIR', tempfile.gettempdir())
+    audio_path = os.path.join(audio_dir, filename)
+    
+    if not os.path.exists(audio_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found"
+        )
+    
+    return FileResponse(
+        audio_path,
+        media_type="audio/wav",
+        filename=filename
+    )
+
 @app.get("/audio/stream/{request_id}")
 @limiter.limit("30/minute")
 async def stream_audio_response(

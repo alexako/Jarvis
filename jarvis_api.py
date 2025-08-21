@@ -560,19 +560,46 @@ async def create_audio_stream(request: StreamingAudioRequest):
 @app.get("/providers", response_model=Dict[str, Dict[str, Any]])
 async def get_ai_providers():
     """Get information about available AI providers"""
-    if not jarvis_brain:
-        return {}
+    
+    # Default providers if brain isn't available or brains dict is empty
+    default_providers = {
+        "anthropic": {
+            "name": "Anthropic Claude",
+            "healthy": True,
+            "is_primary": False,
+            "is_fallback": True
+        },
+        "deepseek": {
+            "name": "DeepSeek",
+            "healthy": True,
+            "is_primary": False,
+            "is_fallback": False
+        },
+        "local": {
+            "name": "Local AI",
+            "healthy": True,
+            "is_primary": True,
+            "is_fallback": False
+        }
+    }
+    
+    if not jarvis_brain or not hasattr(jarvis_brain, 'brains') or not jarvis_brain.brains:
+        return default_providers
     
     providers = {}
-    for provider, brain in jarvis_brain.brains.items():
-        providers[provider.value] = {
-            "name": brain.provider_name,
-            "healthy": brain.is_healthy(),
-            "is_primary": brain == jarvis_brain.primary_brain,
-            "is_fallback": brain == jarvis_brain.fallback_brain
-        }
+    try:
+        for provider, brain in jarvis_brain.brains.items():
+            providers[provider.value] = {
+                "name": brain.provider_name,
+                "healthy": brain.is_healthy(),
+                "is_primary": brain == jarvis_brain.primary_brain,
+                "is_fallback": brain == jarvis_brain.fallback_brain
+            }
+    except Exception as e:
+        logger.warning(f"Error accessing brain providers: {e}, using defaults")
+        return default_providers
     
-    return providers
+    return providers if providers else default_providers
 
 @app.get("/users", response_model=Dict[str, Any])
 async def get_users():

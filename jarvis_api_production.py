@@ -203,8 +203,15 @@ if trusted_hosts and trusted_hosts[0]:
 # Add CORS middleware with production settings
 allowed_origins = security_config.allowed_origins
 if not allowed_origins:
-    # Development fallback
-    allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Development fallback - allow common dev/prod origins
+    allowed_origins = [
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "https://api.alexako.com",
+        "https://alexako.com",
+        "http://localhost:8080",
+        "http://localhost:5173"  # Vite dev server
+    ]
 
 app.add_middleware(
     CORSMiddleware,

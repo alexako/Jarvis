@@ -39,11 +39,16 @@ from production_security import (
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+# Add the src directory to the path so we can import modules
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 # Jarvis components
-from ai_brain import AIBrainManager, BrainProvider
-from speech_analysis.tts import JarvisTTS
-from commands import JarvisCommands, create_ai_config
-from jarvis_context import create_jarvis_context
+from ai.ai_brain import AIBrainManager, BrainProvider
+from audio.speech_analysis.tts import JarvisTTS
+from commands.commands import JarvisCommands, create_ai_config
+from context.jarvis_context import create_jarvis_context
 from pushover_notifications import notify_new_user, notify_system_event
 
 # Configure production logging

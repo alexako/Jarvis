@@ -313,7 +313,9 @@ class LocalBrain(BaseBrain):
     """Local Ollama-powered brain for private, offline AI responses"""
     
     def __init__(self, model_name: str = "phi3.5:3.8b"):
-        super().__init__("Local Phi-3.5")
+        # Generate a more descriptive name based on the actual model
+        model_display_name = self._get_model_display_name(model_name)
+        super().__init__(f"Local {model_display_name}")
         self.model_name = model_name
         self.base_url = "http://localhost:11434"
         
@@ -475,6 +477,34 @@ IMPORTANT: You have access to conversation context and user information. Use thi
             return result.returncode == 0
         except:
             return False
+
+    def _get_model_display_name(self, model_name: str) -> str:
+        """Convert model name to a user-friendly display name"""
+        model_name_lower = model_name.lower()
+        
+        if "llama" in model_name_lower:
+            # Extract version if present
+            if "3.2" in model_name:
+                return "Llama 3.2"
+            elif "3.1" in model_name:
+                return "Llama 3.1"
+            elif "3" in model_name:
+                return "Llama 3"
+            else:
+                return "Llama"
+        elif "phi" in model_name_lower:
+            if "3.5" in model_name:
+                return "Phi-3.5"
+            else:
+                return "Phi"
+        elif "qwen" in model_name_lower:
+            return "Qwen"
+        elif "gemma" in model_name_lower:
+            return "Gemma"
+        else:
+            # For unknown models, just capitalize the first part before the colon
+            base_model = model_name.split(":")[0]
+            return base_model.capitalize()
 
 class AIBrainManager:
     """Main AI brain manager with provider orchestration"""

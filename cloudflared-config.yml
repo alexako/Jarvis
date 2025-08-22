@@ -1,5 +1,5 @@
-tunnel: e2cdb896-1e6b-4fca-9206-e124ccc31fa8
-credentials-file: /Users/alex/.cloudflared/e2cdb896-1e6b-4fca-9206-e124ccc31fa8.json
+tunnel: 9971c2bf-82d8-4113-ae08-aed47afbd237
+credentials-file: /home/alex/.cloudflared/9971c2bf-82d8-4113-ae08-aed47afbd237.json
 
 ingress:
   - hostname: api.alexako.com
